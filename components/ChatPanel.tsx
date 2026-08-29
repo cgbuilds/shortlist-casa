@@ -118,7 +118,13 @@ export function ChatPanel({
         {pending ? <ChatStatus label={provider.label} model={provider.model} phase={phase} /> : null}
         {lastMeta && !pending ? <p className="text-xs text-[var(--muted)]">{lastMeta}</p> : null}
         {committed ? (
-          <p className="text-xs text-[var(--accent)]">Active matrix saved. Search will use this grader.</p>
+          <p className="text-xs text-[var(--accent)]">
+            Active matrix saved.{" "}
+            <a href="#upload-csv" className="underline">
+              Upload a Redfin CSV
+            </a>{" "}
+            above to grade homes.
+          </p>
         ) : null}
       </div>
       <form

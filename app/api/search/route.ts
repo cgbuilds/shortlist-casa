@@ -95,8 +95,8 @@ export async function POST(request: Request) {
   await saveSearch(user, body, ranked.map((r) => r.listing.id));
   for (const row of ranked) await saveGrade(user, row.listing, row.grade);
   return NextResponse.json({
-    source: "redfin-favorites",
-    notice: `${listings.length} homes from Redfin favorites. Garage, laundry, flood, and walkability are unknown until you fill them on a property.`,
+    source: body.source === "favorites" ? "redfin-favorites" : "session",
+    notice: `${listings.length} homes from ${body.source === "favorites" ? "the sample Valrico Redfin CSV" : "your current list"}. Garage, laundry, flood, and walkability are unknown until you fill them on a property.`,
     results: ranked,
   });
 }

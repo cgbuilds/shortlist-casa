@@ -20,7 +20,7 @@ export function AppShell({
               Matrix
             </Link>
             <Link href="/search" className="hover:underline">
-              Search
+              Grade homes
             </Link>
             {email ? <span className="hidden text-[var(--muted)] sm:inline">{email}</span> : null}
             <form action="/api/logout" method="post">
