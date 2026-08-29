@@ -1,27 +1,25 @@
 import OpenAI from "openai";
-import { publicCatalog, SCHOOL_AREA_OPTIONS } from "@/kb/catalog";
+import { baselineStatus } from "@/kb/catalog";
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import type { UserMatrix } from "@/lib/types";
 
-export const SYSTEM_PROMPT = `You are a home-buy rating-matrix coach for family members (primary residence or long-term hold).
-Users will paste free-text gates (example: townhouse with garage or 3 floors or less, end unit, 2+ bed, 2+ bath, in-unit laundry, walkable, not high flood risk) and then grade a Redfin favorites CSV.
-You ONLY configure scoring via tools. Never invent dimensions that are not in the knowledge-base catalog.
-You may add a manual rubric for qualitative items that cannot be computed.
-Ask one cluster at a time, but if they dump a full list of gates, apply all matching catalog items in one turn.
-Keep replies short. After each tool change, summarize what changed.
-Format every user-visible reply as markdown: **bold** labels, a blank line before lists, each list item on its own line starting with a dash. Do not wrap the whole message in a code fence.
-When the user is happy, call commit_matrix.
-Location allowlist can include cities or school areas such as: ${SCHOOL_AREA_OPTIONS.join(", ")}.
-Catalog version is fixed; do not output free-form JSON for the database.
-Map phrases:
-- "3 floors or less" / special assessments → stories max 3, mustHave true
-- townhouse → property_type prefer townhouse
-- garage → garage enabled
-- end unit / sunlight → end_unit
-- washer/dryer → laundry
-- walkable → walkable
-- flood / not in a flood zone → flood
-- long term → long_term`;
+export const SYSTEM_PROMPT = `You are a home-buy rating-matrix coach. Users will grade a Redfin favorites CSV against a matrix you build with tools.
+You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
+You may add a manual rubric for qualitative extras.
+
+BASELINE FIRST — do not skip this, and do not commit until baseline is complete:
+1. General area (metro + state), e.g. Tampa, FL. Call set_budget with searchArea "Tampa, FL". Leave locationAllowlist empty unless they name specific cities/neighborhoods (Valrico, Brandon, etc.). Never copy a default neighborhood list.
+2. Minimum bedrooms (set_dimension id beds, enabled true, min, mustHave true)
+3. Minimum bathrooms (set_dimension id baths)
+4. Property type (set_dimension id property_type, prefs.prefer one of townhouse | sfr | condo | multi)
+
+After baseline is saved, ask: "Any custom must-haves?" and only then enable add-ons (garage, laundry, stories, flood, walkable, end unit, HOA, budget, etc.).
+If they dump everything in one message, apply baseline first, then add-ons.
+
+Do not keep Valrico, Brandon, Bloomingdale, or River Hills unless the user said those places.
+Format replies as markdown with **bold** labels and dash lists.
+Keep replies short. After tools, recap what is set and what baseline is still missing.
+When baseline is complete AND the user confirms, call commit_matrix.`;
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -249,6 +247,22 @@ function heuristicChat(matrix: UserMatrix, userText: string) {
     });
     working = applied.matrix;
     notes.push("Prefer townhouse.");
+  } else if (text.includes("single family") || text.includes("sfr") || /\bhouse\b/.test(text)) {
+    const applied = applyTool(working, "set_dimension", {
+      id: "property_type",
+      enabled: true,
+      prefs: { prefer: "sfr" },
+    });
+    working = applied.matrix;
+    notes.push("Prefer single-family.");
+  } else if (text.includes("condo")) {
+    const applied = applyTool(working, "set_dimension", {
+      id: "property_type",
+      enabled: true,
+      prefs: { prefer: "condo" },
+    });
+    working = applied.matrix;
+    notes.push("Prefer condo.");
   }
 
   if (text.includes("garage")) {
@@ -304,16 +318,46 @@ function heuristicChat(matrix: UserMatrix, userText: string) {
     notes.push("Prefer block construction.");
   }
 
-  if (text.includes("bloomingdale") || text.includes("river hills") || text.includes("fishhawk") || text.includes("valrico") || text.includes("brandon")) {
-    const allow: string[] = [];
-    if (text.includes("bloomingdale")) allow.push("Bloomingdale HS");
-    if (text.includes("river hills")) allow.push("River Hills");
-    if (text.includes("fishhawk") || text.includes("lithia")) allow.push("FishHawk / Lithia");
-    if (text.includes("valrico")) allow.push("Valrico");
-    if (text.includes("brandon")) allow.push("Brandon");
-    const applied = applyTool(working, "set_budget", { locationAllowlist: allow.length ? allow : working.locationAllowlist });
+  const namedPlaces: string[] = [];
+  const placeMap: Array<[RegExp, string]> = [
+    [/\bbloomingdale\b/i, "Bloomingdale HS"],
+    [/\briver hills\b/i, "River Hills"],
+    [/\bvalrico\b/i, "Valrico"],
+    [/\bbrandon\b/i, "Brandon"],
+    [/\blithia\b/i, "Lithia"],
+    [/\briverview\b/i, "Riverview"],
+  ];
+  for (const [re, label] of placeMap) {
+    if (re.test(userText)) namedPlaces.push(label);
+  }
+
+  let searchArea = "";
+  const citySt = userText.match(/\b([A-Za-z][A-Za-z .]{1,40}),\s*(FL|Florida|TX|CA|GA|NC|SC|AL|TN)\b/i);
+  if (citySt) {
+    const st = citySt[2].toUpperCase() === "FLORIDA" ? "FL" : citySt[2].toUpperCase();
+    searchArea = `${citySt[1].trim()}, ${st}`;
+  } else if (/\btampa\b/i.test(userText)) {
+    searchArea = "Tampa, FL";
+  } else if (namedPlaces.length) {
+    searchArea = `${namedPlaces[0].replace(/ HS$/, "")}, FL`;
+  }
+
+  if (searchArea) {
+    const metroCity = searchArea.split(",")[0]?.trim().toLowerCase() ?? "";
+    const allow = namedPlaces.filter((p) => {
+      const n = p.toLowerCase().replace(/ hs$/, "");
+      return n !== metroCity;
+    });
+    const applied = applyTool(working, "set_budget", {
+      searchArea,
+      ...(allow.length ? { locationAllowlist: allow } : {}),
+    });
     working = applied.matrix;
-    notes.push(`Location allowlist: ${working.locationAllowlist.join(", ")}.`);
+    notes.push(
+      allow.length
+        ? `Search area set to ${searchArea} (focus: ${allow.join(", ")}).`
+        : `Search area set to ${searchArea}.`
+    );
   }
 
   if (text.includes("slack") || text.includes("payment") || text.includes("pitia")) {
@@ -326,19 +370,26 @@ function heuristicChat(matrix: UserMatrix, userText: string) {
     notes.push("Updated PITIA / monthly slack targets.");
   }
 
-  if (text.includes("commit") || text.includes("save") || text.includes("looks good") || text.includes("done")) {
-    commit = true;
-    notes.push("Matrix committed as your active grader.");
+  if (text.includes("commit") || text.includes("save") || text.includes("looks good") || text.includes("done") || text === "yes") {
+    const baseline = baselineStatus(working);
+    if (!baseline.complete) {
+      notes.push(
+        `Still need baseline: ${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}.`
+      );
+    } else {
+      commit = true;
+      notes.push("Matrix committed as your active grader.");
+    }
   }
 
   if (notes.length === 0) {
-    const cats = publicCatalog()
-      .filter((c) => c.defaultEnabled)
-      .slice(0, 8)
-      .map((c) => c.defaultLabel)
-      .join(", ");
+    const missing = baselineStatus(working)
+      .gaps.filter((g) => !g.done)
+      .map((g) => g.label);
     notes.push(
-      `No cloud LLM key — using the built-in coach. Paste Mom's gates in one message (townhouse, garage, 3 floors or less, 2+ bed/bath, laundry, walkable, flood). Catalog includes ${cats}. Add OPENROUTER_API_KEY for Auto mode. Say "commit" when ready.`
+      missing.length
+        ? `Need baseline first: ${missing.join(", ")}. Example: Tampa, FL · 3 bed · 2 bath · single-family. Then add custom must-haves.`
+        : "Baseline is set. Add custom must-haves, or say commit when ready."
     );
   }
 

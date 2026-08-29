@@ -1,6 +1,6 @@
 import type { CatalogDimension, UserMatrix } from "@/lib/types";
 
-export const CATALOG_VERSION = "1.1.0";
+export const CATALOG_VERSION = "1.2.0";
 
 export const SCHOOL_AREA_OPTIONS = [
   "Bloomingdale HS",
@@ -21,9 +21,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Minimum bedroom count. Family default is 2+.",
     requiredFields: ["beds"],
     enrichable: false,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 10,
-    defaultKnobs: { enabled: true, weight: 10, min: 2, mustHave: true },
+    defaultKnobs: { enabled: false, weight: 10, min: 2, mustHave: true },
     allowedKnobs: ["enabled", "weight", "min", "mustHave", "label"],
   },
   {
@@ -33,9 +33,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Minimum bathroom count. Family default is 2+.",
     requiredFields: ["baths"],
     enrichable: false,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 8,
-    defaultKnobs: { enabled: true, weight: 8, min: 2, mustHave: true },
+    defaultKnobs: { enabled: false, weight: 8, min: 2, mustHave: true },
     allowedKnobs: ["enabled", "weight", "min", "mustHave", "label"],
   },
   {
@@ -54,12 +54,12 @@ export const CATALOG: CatalogDimension[] = [
     id: "property_type",
     cluster: "must_haves",
     defaultLabel: "Property type",
-    description: "Prefer townhouse, condo, or SFR. Mom’s notes prefer townhouse.",
+    description: "Prefer townhouse, condo, single-family, or multi. Set from chat after the buyer names a type.",
     requiredFields: ["facts.propertyType"],
     enrichable: false,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 10,
-    defaultKnobs: { enabled: true, weight: 10, mustHave: false, prefs: { prefer: "townhouse" } },
+    defaultKnobs: { enabled: false, weight: 10, mustHave: false, prefs: {} },
     allowedKnobs: ["enabled", "weight", "mustHave", "label", "prefs"],
   },
   {
@@ -69,9 +69,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Prefer a garage, especially with a townhouse.",
     requiredFields: ["facts.garage"],
     enrichable: true,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 8,
-    defaultKnobs: { enabled: true, weight: 8, mustHave: false },
+    defaultKnobs: { enabled: false, weight: 8, mustHave: false },
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
@@ -81,9 +81,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Washer and dryer in the unit, not a shared laundry.",
     requiredFields: ["facts.inUnitLaundry"],
     enrichable: true,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 8,
-    defaultKnobs: { enabled: true, weight: 8, mustHave: true },
+    defaultKnobs: { enabled: false, weight: 8, mustHave: true },
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
@@ -93,9 +93,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Prefer end unit for more windows and light (townhouse/condo).",
     requiredFields: ["facts.endUnit"],
     enrichable: true,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 6,
-    defaultKnobs: { enabled: true, weight: 6, mustHave: false },
+    defaultKnobs: { enabled: false, weight: 6, mustHave: false },
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
@@ -105,9 +105,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Prefer 3 floors or fewer (FL condo/townhouse inspection and special-assessment rules).",
     requiredFields: ["facts.stories"],
     enrichable: true,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 10,
-    defaultKnobs: { enabled: true, weight: 10, max: 3, mustHave: true },
+    defaultKnobs: { enabled: false, weight: 10, max: 3, mustHave: true },
     allowedKnobs: ["enabled", "weight", "max", "min", "mustHave", "label"],
   },
   {
@@ -182,9 +182,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Longer DOM suggests more seller motivation.",
     requiredFields: ["daysOnMarket"],
     enrichable: false,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 4,
-    defaultKnobs: { enabled: true, weight: 4, min: 30 },
+    defaultKnobs: { enabled: false, weight: 4, min: 30 },
     allowedKnobs: ["enabled", "weight", "min", "invert", "label"],
   },
   {
@@ -230,9 +230,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "How the ask compares to your max purchase price.",
     requiredFields: ["listPrice"],
     enrichable: false,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 8,
-    defaultKnobs: { enabled: true, weight: 8, mustHave: false },
+    defaultKnobs: { enabled: false, weight: 8, mustHave: false },
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
@@ -254,16 +254,16 @@ export const CATALOG: CatalogDimension[] = [
     description: "Prefer newer/maintained stock for a 10+ year hold. Uses year built when present.",
     requiredFields: ["yearBuilt"],
     enrichable: false,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 5,
-    defaultKnobs: { enabled: true, weight: 5, min: 1990 },
+    defaultKnobs: { enabled: false, weight: 5, min: 1990 },
     allowedKnobs: ["enabled", "weight", "min", "label"],
   },
   {
     id: "school_area",
     cluster: "location",
     defaultLabel: "School / neighborhood area",
-    description: "Match city or named area against your allowlist (Valrico, Bloomingdale, River Hills, etc.).",
+    description: "Match city or named area against the neighborhoods the buyer named in chat. Empty list means anywhere in the general area.",
     requiredFields: ["facts.schoolArea"],
     enrichable: true,
     defaultEnabled: false,
@@ -278,9 +278,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Prefer a walkable setting. Redfin CSV does not include Walk Score — fill on the property page.",
     requiredFields: ["facts.walkable"],
     enrichable: true,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 8,
-    defaultKnobs: { enabled: true, weight: 8, mustHave: false },
+    defaultKnobs: { enabled: false, weight: 8, mustHave: false },
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
@@ -290,9 +290,9 @@ export const CATALOG: CatalogDimension[] = [
     description: "Avoid special flood hazard areas (AE/VE/A). Prefer zone X. Enrich from FEMA or the listing.",
     requiredFields: ["facts.floodZone"],
     enrichable: true,
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultWeight: 10,
-    defaultKnobs: { enabled: true, weight: 10, mustHave: true },
+    defaultKnobs: { enabled: false, weight: 10, mustHave: true },
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
@@ -337,19 +337,80 @@ export function defaultMatrix(): UserMatrix {
   return {
     catalogVersion: CATALOG_VERSION,
     unknownPolicy: "skip",
+    searchArea: "",
     budget: {
-      maxPrice: 650000,
-      maxPitia: 3800,
-      minMonthlySlack: 800,
       downPaymentPct: 5,
       ratePct: 6.5,
       taxRatePct: 1.1,
       insuranceMonthly: 250,
     },
-    locationAllowlist: ["Valrico", "Brandon", "Bloomingdale HS", "River Hills"],
+    locationAllowlist: [],
     dimensions,
     manualRubrics: [],
   };
+}
+
+const LEGACY_AREAS = ["Valrico", "Brandon", "Bloomingdale HS", "River Hills"];
+
+export const PROPERTY_TYPE_LABELS: Record<string, string> = {
+  sfr: "Single-family",
+  townhouse: "Townhouse",
+  condo: "Condo",
+  multi: "Multi-family",
+};
+
+export function isLegacyAllowlist(areas: string[] | undefined) {
+  if (!areas || areas.length !== LEGACY_AREAS.length) return false;
+  return LEGACY_AREAS.every((a) => areas.includes(a));
+}
+
+export function parseSearchArea(searchArea: string): { city: string; state: string } {
+  const trimmed = searchArea.trim();
+  const m = trimmed.match(/^(.+?)(?:,\s*|\s+)(FL|Florida)$/i) || trimmed.match(/^(.+?),\s*([A-Z]{2})$/i);
+  if (!m) return { city: trimmed, state: "" };
+  const state = m[2].toUpperCase() === "FLORIDA" ? "FL" : m[2].toUpperCase();
+  return { city: m[1].trim(), state };
+}
+
+export function formatPropertyType(prefer: string | undefined): string {
+  if (!prefer) return "";
+  return PROPERTY_TYPE_LABELS[prefer] ?? prefer;
+}
+
+export type BaselineGap = { id: string; label: string; value: string; done: boolean };
+
+export function baselineStatus(matrix: UserMatrix): { complete: boolean; gaps: BaselineGap[] } {
+  const beds = matrix.dimensions.beds;
+  const baths = matrix.dimensions.baths;
+  const ptype = matrix.dimensions.property_type;
+  const prefer = ptype?.prefs?.prefer ? String(ptype.prefs.prefer) : "";
+  const gaps: BaselineGap[] = [
+    {
+      id: "area",
+      label: "General area",
+      value: matrix.searchArea || matrix.locationAllowlist.join(", ") || "not set",
+      done: Boolean(matrix.searchArea) || matrix.locationAllowlist.length > 0,
+    },
+    {
+      id: "beds",
+      label: "Bedrooms",
+      value: beds?.enabled && beds.min != null ? `${beds.min}+` : "not set",
+      done: Boolean(beds?.enabled && beds.min != null),
+    },
+    {
+      id: "baths",
+      label: "Bathrooms",
+      value: baths?.enabled && baths.min != null ? `${baths.min}+` : "not set",
+      done: Boolean(baths?.enabled && baths.min != null),
+    },
+    {
+      id: "property_type",
+      label: "Property type",
+      value: ptype?.enabled && prefer ? formatPropertyType(prefer) : "not set",
+      done: Boolean(ptype?.enabled && prefer),
+    },
+  ];
+  return { complete: gaps.every((g) => g.done), gaps };
 }
 
 export function publicCatalog() {

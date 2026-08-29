@@ -1,4 +1,4 @@
-import { CATALOG, CATALOG_VERSION, defaultMatrix, catalogById } from "@/kb/catalog";
+import { CATALOG, CATALOG_VERSION, defaultMatrix, catalogById, isLegacyAllowlist, baselineStatus } from "@/kb/catalog";
 import type { DimensionKnobs, ManualRubric, UnknownPolicy, UserMatrix } from "@/lib/types";
 
 const ALLOWED_KNOB_KEYS = new Set([
@@ -19,13 +19,15 @@ export function cloneMatrix(matrix: UserMatrix): UserMatrix {
 export function ensureMatrix(input?: Partial<UserMatrix> | null): UserMatrix {
   const base = defaultMatrix();
   if (!input) return base;
+  const legacy = isLegacyAllowlist(input.locationAllowlist);
   return {
     ...base,
     ...input,
     catalogVersion: CATALOG_VERSION,
+    searchArea: legacy ? "" : (input.searchArea ?? base.searchArea),
     budget: { ...base.budget, ...input.budget },
     dimensions: { ...base.dimensions, ...input.dimensions },
-    locationAllowlist: input.locationAllowlist ?? base.locationAllowlist,
+    locationAllowlist: legacy ? [] : (input.locationAllowlist ?? base.locationAllowlist),
     manualRubrics: input.manualRubrics ?? base.manualRubrics,
     unknownPolicy: input.unknownPolicy ?? base.unknownPolicy,
   };
@@ -56,18 +58,31 @@ export function setDimension(
 
 export function setBudget(
   matrix: UserMatrix,
-  patch: UserMatrix["budget"] & { unknownPolicy?: UnknownPolicy; locationAllowlist?: string[] }
+  patch: UserMatrix["budget"] & {
+    unknownPolicy?: UnknownPolicy;
+    locationAllowlist?: string[];
+    searchArea?: string;
+  }
 ): UserMatrix {
-  const { unknownPolicy, locationAllowlist: allowIn, ...budgetPatch } = patch;
+  const { unknownPolicy, locationAllowlist: allowIn, searchArea, ...budgetPatch } = patch;
   const locationAllowlist = allowIn
-    ? allowIn.map((a) => a.trim()).filter((a) => a.length >= 2 && a.length <= 40)
+    ? allowIn.map((a) => a.trim()).filter((a) => a.length >= 2 && a.length <= 48)
     : matrix.locationAllowlist;
-  return {
+  const next: UserMatrix = {
     ...matrix,
     unknownPolicy: unknownPolicy ?? matrix.unknownPolicy,
+    searchArea: searchArea != null ? searchArea.trim() : matrix.searchArea,
     budget: { ...matrix.budget, ...budgetPatch },
     locationAllowlist,
   };
+  if (!next.searchArea && next.locationAllowlist.length) {
+    next.searchArea = next.locationAllowlist.join(", ");
+  }
+  if (next.searchArea || next.locationAllowlist.length) {
+    const loc = setDimension(next, "school_area", { enabled: true, mustHave: true });
+    if (!("error" in loc)) return loc;
+  }
+  return next;
 }
 
 export function addManualRubric(matrix: UserMatrix, label: string, weight = 5): UserMatrix {
@@ -83,6 +98,8 @@ export function previewMatrix(matrix: UserMatrix) {
   return {
     catalogVersion: matrix.catalogVersion,
     unknownPolicy: matrix.unknownPolicy,
+    searchArea: matrix.searchArea,
+    baseline: baselineStatus(matrix),
     budget: matrix.budget,
     locationAllowlist: matrix.locationAllowlist,
     dimensions: CATALOG.map((d) => ({
@@ -131,10 +148,11 @@ export const CHAT_TOOLS = [
     type: "function" as const,
     function: {
       name: "set_budget",
-      description: "Set money caps and location allowlist.",
+      description: "Set search area, neighborhood allowlist, and money caps. Use searchArea for metro like 'Tampa, FL'. Use locationAllowlist for cities/neighborhoods/school zones inside that area.",
       parameters: {
         type: "object",
         properties: {
+          searchArea: { type: "string", description: "Metro / general area, e.g. Tampa, FL" },
           maxPrice: { type: "number" },
           maxPitia: { type: "number" },
           minMonthlySlack: { type: "number" },
@@ -207,19 +225,40 @@ export function applyTool(
       if ("error" in next) return { matrix, result: next };
       return { matrix: next, result: { ok: true, dimension: next.dimensions[id] } };
     }
-    case "set_budget":
+    case "set_budget": {
+      const next = setBudget(
+        matrix,
+        args as UserMatrix["budget"] & { locationAllowlist?: string[]; searchArea?: string; unknownPolicy?: UnknownPolicy }
+      );
       return {
-        matrix: setBudget(matrix, args as UserMatrix["budget"]),
-        result: { ok: true, budget: { ...matrix.budget, ...args } },
+        matrix: next,
+        result: {
+          ok: true,
+          searchArea: next.searchArea,
+          locationAllowlist: next.locationAllowlist,
+          budget: next.budget,
+        },
       };
+    }
     case "add_manual_rubric": {
       const next = addManualRubric(matrix, String(args.label ?? "Manual"), Number(args.weight ?? 5));
       return { matrix: next, result: { ok: true, manualRubrics: next.manualRubrics } };
     }
     case "preview_matrix":
       return { matrix, result: previewMatrix(matrix) };
-    case "commit_matrix":
+    case "commit_matrix": {
+      const baseline = baselineStatus(matrix);
+      if (!baseline.complete) {
+        return {
+          matrix,
+          result: {
+            error: "Finish baseline must-haves first (area, beds, baths, property type).",
+            missing: baseline.gaps.filter((g) => !g.done),
+          },
+        };
+      }
       return { matrix, result: { ok: true, committed: true }, commit: true };
+    }
     default:
       return { matrix, result: { error: `Unknown tool ${name}` } };
   }

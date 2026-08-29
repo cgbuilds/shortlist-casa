@@ -23,7 +23,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("split");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showLevers, setShowLevers] = useState(false);
+  const [showLevers, setShowLevers] = useState(true);
 
   const applyGrade = useCallback((data: { results?: Row[]; notice?: string }) => {
     setRows(data.results ?? []);
@@ -66,7 +66,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           onToggle={(e) => setShowLevers((e.target as HTMLDetailsElement).open)}
         >
           <summary className="cursor-pointer px-3 py-2 text-[var(--muted)]">Scoring details</summary>
-          <div className="max-h-56 overflow-y-auto px-3 pb-3">
+          <div className="max-h-80 overflow-y-auto px-3 pb-3">
             <MatrixPreview matrix={matrix} />
           </div>
         </details>

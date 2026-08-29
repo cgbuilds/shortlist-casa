@@ -82,6 +82,7 @@ export type BudgetSettings = {
 export type UserMatrix = {
   catalogVersion: string;
   unknownPolicy: UnknownPolicy;
+  searchArea: string;
   budget: BudgetSettings;
   locationAllowlist: string[];
   dimensions: Record<string, DimensionKnobs>;

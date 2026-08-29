@@ -18,7 +18,7 @@ export function ChatPanel({
     {
       role: "assistant",
       content:
-        "Tell me what matters (beds, townhouse, flood, school area). I’ll lock a grader. Then upload a Redfin CSV on this same page — list or list + map, like Zillow.",
+        "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type (townhouse, single-family, condo). After those, add any custom must-haves.",
     },
   ]);
   const [text, setText] = useState("");
@@ -133,7 +133,7 @@ export function ChatPanel({
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="townhouse w/ garage or 3 floors or less; end unit; 2+ bed; 2+ bath; in-unit W/D; walkable; not high flood risk; long term"
+          placeholder="Tampa, FL · 3 bed · 2 bath · single-family. Then garage, W/D, walkable…"
           rows={3}
           className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm"
         />

@@ -1,4 +1,4 @@
-import { CATALOG, catalogById } from "@/kb/catalog";
+import { CATALOG, catalogById, parseSearchArea } from "@/kb/catalog";
 import type {
   DimensionScore,
   GradeResult,
@@ -366,18 +366,41 @@ function evaluateDimension(
       };
     }
     case "school_area": {
+      const parsed = parseSearchArea(matrix.searchArea || "");
+      if (parsed.state && listing.state && listing.state.toUpperCase() !== parsed.state) {
+        return {
+          id,
+          score: 20,
+          unknown: false,
+          mustHaveFailed: !!knobs.mustHave,
+          reason: `${listing.city}, ${listing.state} is outside ${matrix.searchArea}`,
+        };
+      }
       const area = listing.facts.schoolArea || listing.city;
-      if (!area) return { id, ...unknownScore(matrix, "School area unknown"), mustHaveFailed: false };
+      if (!area && matrix.locationAllowlist.length) {
+        return { id, ...unknownScore(matrix, "School area unknown"), mustHaveFailed: !!knobs.mustHave };
+      }
+      if (matrix.locationAllowlist.length === 0) {
+        return {
+          id,
+          score: 100,
+          unknown: false,
+          mustHaveFailed: false,
+          reason: matrix.searchArea
+            ? `${listing.city} is in ${matrix.searchArea}`
+            : "No neighborhood filter",
+        };
+      }
       const hay = `${area} ${listing.city} ${listing.neighborhood ?? ""}`.toLowerCase();
-      const ok =
-        matrix.locationAllowlist.length === 0 ||
-        matrix.locationAllowlist.some((a) => hay.includes(a.toLowerCase()) || a.toLowerCase() === area.toLowerCase());
+      const ok = matrix.locationAllowlist.some(
+        (a) => hay.includes(a.toLowerCase()) || a.toLowerCase() === area?.toLowerCase()
+      );
       return {
         id,
         score: ok ? 100 : 20,
         unknown: false,
         mustHaveFailed: !!knobs.mustHave && !ok,
-        reason: ok ? `${area} is in allowlist` : `${area} is outside allowlist`,
+        reason: ok ? `${area} matches ${matrix.locationAllowlist.join(", ")}` : `${area} is outside named neighborhoods`,
       };
     }
     case "hoa_cdd": {
