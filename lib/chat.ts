@@ -9,6 +9,7 @@ You ONLY configure scoring via tools. Never invent dimensions that are not in th
 You may add a manual rubric for qualitative items that cannot be computed.
 Ask one cluster at a time, but if they dump a full list of gates, apply all matching catalog items in one turn.
 Keep replies short. After each tool change, summarize what changed.
+Format every user-visible reply as markdown: **bold** labels, a blank line before lists, each list item on its own line starting with a dash. Do not wrap the whole message in a code fence.
 When the user is happy, call commit_matrix.
 Location allowlist can include cities or school areas such as: ${SCHOOL_AREA_OPTIONS.join(", ")}.
 Catalog version is fixed; do not output free-form JSON for the database.
@@ -61,15 +62,53 @@ function getLlmClient(): LlmClient | null {
   return null;
 }
 
+export function chatProviderInfo() {
+  const llm = getLlmClient();
+  if (!llm) {
+    return { provider: "heuristic", model: "built-in", label: "Built-in coach" };
+  }
+  const labels: Record<string, string> = {
+    openrouter: "OpenRouter",
+    groq: "Groq",
+    openai: "OpenAI",
+  };
+  return {
+    provider: llm.provider,
+    model: llm.model,
+    label: labels[llm.provider] ?? llm.provider,
+  };
+}
+
+export type ChatResult = {
+  reply: string;
+  matrix: UserMatrix;
+  commit: boolean;
+  usedModel: boolean;
+  provider: string;
+  model?: string;
+  label?: string;
+  toolRounds?: number;
+  elapsedMs?: number;
+};
+
 export async function runMatrixChat(
   matrix: UserMatrix,
   history: ChatMessage[],
   userText: string
-): Promise<{ reply: string; matrix: UserMatrix; commit: boolean; usedModel: boolean; provider: string }> {
+): Promise<ChatResult> {
+  const started = Date.now();
+  const info = chatProviderInfo();
   const llm = getLlmClient();
   if (!llm) {
     const fallback = heuristicChat(matrix, userText);
-    return { ...fallback, provider: "heuristic" };
+    return {
+      ...fallback,
+      provider: "heuristic",
+      model: "built-in",
+      label: "Built-in coach",
+      toolRounds: 0,
+      elapsedMs: Date.now() - started,
+    };
   }
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -85,6 +124,7 @@ export async function runMatrixChat(
   let working = matrix;
   let commit = false;
   let guard = 0;
+  let toolRounds = 0;
 
   try {
     while (guard < 6) {
@@ -98,6 +138,7 @@ export async function runMatrixChat(
       const msg = completion.choices[0]?.message;
       if (!msg) break;
       if (msg.tool_calls?.length) {
+        toolRounds += 1;
         messages.push(msg);
         for (const call of msg.tool_calls) {
           if (call.type !== "function") continue;
@@ -119,16 +160,34 @@ export async function runMatrixChat(
         commit,
         usedModel: true,
         provider: llm.provider,
+        model: llm.model,
+        label: info.label,
+        toolRounds,
+        elapsedMs: Date.now() - started,
       };
     }
-    return { reply: "I updated your matrix draft.", matrix: working, commit, usedModel: true, provider: llm.provider };
+    return {
+      reply: "I updated your matrix draft.",
+      matrix: working,
+      commit,
+      usedModel: true,
+      provider: llm.provider,
+      model: llm.model,
+      label: info.label,
+      toolRounds,
+      elapsedMs: Date.now() - started,
+    };
   } catch (err) {
     const fallback = heuristicChat(matrix, userText);
     const detail = err instanceof Error ? err.message : "LLM error";
     return {
       ...fallback,
-      reply: `${fallback.reply} (Chat provider ${llm.provider} failed: ${detail.slice(0, 140)})`,
+      reply: `${fallback.reply}\n\n_(Provider ${info.label} failed: ${detail.slice(0, 140)}. Used built-in coach.)_`,
       provider: "heuristic",
+      model: "built-in",
+      label: "Built-in coach (fallback)",
+      toolRounds,
+      elapsedMs: Date.now() - started,
     };
   }
 }

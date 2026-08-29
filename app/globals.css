@@ -18,8 +18,12 @@
   --font-display: var(--font-display);
 }
 
-body {
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+.chat-md-invert {
+  color: var(--paper);
+}
+.chat-md-invert a {
+  color: var(--paper);
+}
+.chat-md-invert code {
+  background: rgb(255 255 255 / 0.15);
 }

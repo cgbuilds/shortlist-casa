@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
-import { runMatrixChat, type ChatMessage } from "@/lib/chat";
+import { chatProviderInfo, runMatrixChat, type ChatMessage } from "@/lib/chat";
 import { getSessionUser, loadActiveMatrix, saveActiveMatrix } from "@/lib/session";
 import { ensureMatrix } from "@/lib/matrix-tools";
 import type { UserMatrix } from "@/lib/types";
+
+export async function GET() {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  return NextResponse.json(chatProviderInfo());
+}
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
@@ -27,5 +33,9 @@ export async function POST(request: Request) {
     commit: result.commit,
     usedModel: result.usedModel,
     provider: result.provider,
+    model: result.model,
+    label: result.label,
+    toolRounds: result.toolRounds,
+    elapsedMs: result.elapsedMs,
   });
 }
