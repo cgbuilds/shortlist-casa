@@ -1,6 +1,6 @@
 import type { CatalogDimension, UserMatrix } from "@/lib/types";
 
-export const CATALOG_VERSION = "1.2.0";
+export const CATALOG_VERSION = "1.3.0";
 
 export const SCHOOL_AREA_OPTIONS = [
   "Bloomingdale HS",
@@ -275,8 +275,8 @@ export const CATALOG: CatalogDimension[] = [
     id: "walkable",
     cluster: "location",
     defaultLabel: "Walkable location",
-    description: "Prefer a walkable setting. Redfin CSV does not include Walk Score — fill on the property page.",
-    requiredFields: ["facts.walkable"],
+    description: "Prefer a walkable setting. When lat/lng exist we count nearby cafés and shops; you can still override on the property page.",
+    requiredFields: ["facts.walkable", "facts.cafeCount"],
     enrichable: true,
     defaultEnabled: false,
     defaultWeight: 8,
@@ -284,11 +284,47 @@ export const CATALOG: CatalogDimension[] = [
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
+    id: "neighborhood_vibe",
+    cluster: "location",
+    defaultLabel: "Neighborhood feel",
+    description: "Soft filter: sleepy suburb vs walkable local city-center vs busy/strip. Prefer local_center when they want shops nearby but not a hectic area.",
+    requiredFields: ["facts.neighborhoodVibe", "facts.cafeCount", "facts.shopCount"],
+    enrichable: true,
+    defaultEnabled: false,
+    defaultWeight: 8,
+    defaultKnobs: { enabled: false, weight: 8, mustHave: false, prefs: { prefer: "local_center" } },
+    allowedKnobs: ["enabled", "weight", "mustHave", "label", "prefs"],
+  },
+  {
+    id: "local_amenities",
+    cluster: "location",
+    defaultLabel: "Walk-to shops / coffee",
+    description: "At least one café and everyday shops within a short walk. Counted from OpenStreetMap when the listing has coordinates.",
+    requiredFields: ["facts.cafeCount", "facts.shopCount"],
+    enrichable: true,
+    defaultEnabled: false,
+    defaultWeight: 8,
+    defaultKnobs: { enabled: false, weight: 8, mustHave: false, prefs: { requireCoffee: false, requireShops: false } },
+    allowedKnobs: ["enabled", "weight", "mustHave", "label", "prefs"],
+  },
+  {
     id: "flood",
     cluster: "location",
-    defaultLabel: "Flood zone",
-    description: "Avoid special flood hazard areas (AE/VE/A). Prefer zone X. Enrich from FEMA or the listing.",
+    defaultLabel: "FEMA flood zone",
+    description: "FEMA map zone (X vs AE/VE). If they will live in a high zone, set prefs.acceptSfha true and use flood_resilience for actual street/sewage flooding.",
     requiredFields: ["facts.floodZone"],
+    enrichable: true,
+    defaultEnabled: false,
+    defaultWeight: 6,
+    defaultKnobs: { enabled: false, weight: 6, mustHave: true, prefs: { acceptSfha: false } },
+    allowedKnobs: ["enabled", "weight", "mustHave", "label", "prefs"],
+  },
+  {
+    id: "flood_resilience",
+    cluster: "location",
+    defaultLabel: "Drainage / interior flooding",
+    description: "Street ponding and sewage backup after ordinary rain — not the FEMA zone. Mark on the property page; listings do not include this.",
+    requiredFields: ["facts.drainageQuality", "facts.streetFlooding"],
     enrichable: true,
     defaultEnabled: false,
     defaultWeight: 10,

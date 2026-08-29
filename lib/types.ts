@@ -4,6 +4,10 @@ export type ConstructionType = "block" | "frame" | "other";
 
 export type PropertyType = "sfr" | "townhouse" | "condo" | "multi" | "other";
 
+export type NeighborhoodVibe = "sleepy" | "local_center" | "busy";
+
+export type DrainageQuality = "high" | "mixed" | "poor";
+
 export type PropertyFacts = {
   construction?: ConstructionType | null;
   stories?: number | null;
@@ -25,6 +29,11 @@ export type PropertyFacts = {
   floodZone?: string | null;
   sfha?: boolean | null;
   walkable?: boolean | null;
+  neighborhoodVibe?: NeighborhoodVibe | null;
+  cafeCount?: number | null;
+  shopCount?: number | null;
+  drainageQuality?: DrainageQuality | null;
+  streetFlooding?: boolean | null;
 };
 
 export type PropertyListing = {

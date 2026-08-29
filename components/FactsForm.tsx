@@ -26,6 +26,9 @@ export function FactsForm({
     inUnitLaundry: listing.facts.inUnitLaundry ? "yes" : listing.facts.inUnitLaundry === false ? "no" : "",
     walkable: listing.facts.walkable ? "yes" : listing.facts.walkable === false ? "no" : "",
     floodZone: listing.facts.floodZone ?? "",
+    neighborhoodVibe: listing.facts.neighborhoodVibe ?? "",
+    drainageQuality: listing.facts.drainageQuality ?? "",
+    streetFlooding: listing.facts.streetFlooding ? "yes" : listing.facts.streetFlooding === false ? "no" : "",
   });
 
   async function submit(e: FormEvent) {
@@ -51,6 +54,9 @@ export function FactsForm({
           walkable: boolish(form.walkable),
           floodZone: form.floodZone || null,
           sfha: form.floodZone ? /^(A|AE|AH|AO|VE|V)/i.test(form.floodZone) : null,
+          neighborhoodVibe: form.neighborhoodVibe || null,
+          drainageQuality: form.drainageQuality || null,
+          streetFlooding: boolish(form.streetFlooding),
         }),
       });
       const data = await res.json();
@@ -164,6 +170,18 @@ export function FactsForm({
           <option value="no">No</option>
         </select>
       </Field>
+      <Field label="Neighborhood feel">
+        <select
+          className="w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-2 py-2"
+          value={form.neighborhoodVibe}
+          onChange={(e) => setForm({ ...form, neighborhoodVibe: e.target.value })}
+        >
+          <option value="">Unknown / from map</option>
+          <option value="sleepy">Laid-back / sleepy</option>
+          <option value="local_center">Local city-center</option>
+          <option value="busy">Busy / high-traffic</option>
+        </select>
+      </Field>
       <Field label="Walkable">
         <select
           className="w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-2 py-2"
@@ -182,6 +200,29 @@ export function FactsForm({
           onChange={(e) => setForm({ ...form, floodZone: e.target.value })}
           placeholder="X"
         />
+      </Field>
+      <Field label="Drainage after rain">
+        <select
+          className="w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-2 py-2"
+          value={form.drainageQuality}
+          onChange={(e) => setForm({ ...form, drainageQuality: e.target.value })}
+        >
+          <option value="">Unknown</option>
+          <option value="high">Drains well</option>
+          <option value="mixed">Mixed</option>
+          <option value="poor">Ponds / backs up</option>
+        </select>
+      </Field>
+      <Field label="Street / sewage flooding">
+        <select
+          className="w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-2 py-2"
+          value={form.streetFlooding}
+          onChange={(e) => setForm({ ...form, streetFlooding: e.target.value })}
+        >
+          <option value="">Unknown</option>
+          <option value="no">Rare</option>
+          <option value="yes">Regular after rain</option>
+        </select>
       </Field>
       <div className="sm:col-span-2">
         <button className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm text-white" disabled={pending}>

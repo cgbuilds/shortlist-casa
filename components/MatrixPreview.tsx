@@ -49,6 +49,10 @@ export function MatrixPreview({ matrix }: { matrix: UserMatrix }) {
                   <span>{knobs?.label || d.defaultLabel}</span>
                   <span className="text-[var(--muted)]">
                     {knobs?.mustHave ? "must" : "prefer"}
+                    {knobs?.prefs?.prefer ? ` · ${String(knobs.prefs.prefer).replace(/_/g, " ")}` : ""}
+                    {knobs?.prefs?.requireCoffee ? " · coffee nearby" : ""}
+                    {knobs?.prefs?.requireShops ? " · shops" : ""}
+                    {knobs?.prefs?.acceptSfha ? " · FEMA AE OK" : ""}
                     {knobs?.min != null ? ` · min ${knobs.min}` : ""}
                     {knobs?.max != null ? ` · max ${knobs.max}` : ""}
                   </span>

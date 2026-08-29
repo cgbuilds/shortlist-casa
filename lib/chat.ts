@@ -13,7 +13,15 @@ BASELINE FIRST — do not skip this, and do not commit until baseline is complet
 3. Minimum bathrooms (set_dimension id baths)
 4. Property type (set_dimension id property_type, prefs.prefer one of townhouse | sfr | condo | multi)
 
-After baseline is saved, ask: "Any custom must-haves?" and only then enable add-ons (garage, laundry, stories, flood, walkable, end unit, HOA, budget, etc.).
+After baseline is saved, ask: "Any custom must-haves?" and only then enable add-ons.
+
+SOFT / SUBJECTIVE GATES (these are first-class catalog dimensions — do not ignore them):
+- neighborhood_vibe prefs.prefer local_center = not sleepy/laid-back, not a busy strip, walkable local city-center
+- local_amenities prefs.requireCoffee true (mustHave if they need a café) and requireShops true for everyday shops
+- walkable for a short walk to those places
+- flood vs flood_resilience: if they accept living in FEMA AE/VE, set flood prefs.acceptSfha true and mustHave false. Enable flood_resilience (street ponding / sewage backup) as the must-have. If they simply want to avoid flood zones, keep flood mustHave true.
+- add_manual_rubric for purely taste items (a *great* coffee shop vs just having one nearby)
+
 If they dump everything in one message, apply baseline first, then add-ons.
 
 Do not keep Valrico, Brandon, Bloomingdale, or River Hills unless the user said those places.
@@ -294,16 +302,71 @@ function heuristicChat(matrix: UserMatrix, userText: string) {
     notes.push("Cap at 3 stories to limit special-assessment risk.");
   }
 
-  if (text.includes("walkable") || text.includes("walk-up") || text.includes("walk to")) {
-    const applied = applyTool(working, "set_dimension", { id: "walkable", enabled: true });
-    working = applied.matrix;
+  if (
+    text.includes("walkable") ||
+    text.includes("walk-up") ||
+    text.includes("walk to") ||
+    text.includes("coffee") ||
+    text.includes("cafe") ||
+    text.includes("café") ||
+    text.includes("city center") ||
+    text.includes("local shop") ||
+    text.includes("laid back") ||
+    text.includes("laid-back") ||
+    text.includes("not too busy")
+  ) {
+    const wantCoffee = text.includes("coffee") || text.includes("cafe") || text.includes("café");
+    const wantShops = text.includes("shop") || text.includes("city center") || text.includes("walk to");
+    const vibe = applyTool(working, "set_dimension", {
+      id: "neighborhood_vibe",
+      enabled: true,
+      mustHave: false,
+      prefs: { prefer: "local_center" },
+    });
+    working = vibe.matrix;
+    notes.push("Neighborhood feel: local city-center (not sleepy, not a busy strip).");
+    const amenities = applyTool(working, "set_dimension", {
+      id: "local_amenities",
+      enabled: true,
+      mustHave: wantCoffee,
+      prefs: { requireCoffee: wantCoffee, requireShops: wantShops || !wantCoffee },
+    });
+    working = amenities.matrix;
+    if (wantCoffee) notes.push("Must have at least one café within a short walk.");
+    if (wantShops || !wantCoffee) notes.push("Everyday shops within a short walk.");
+    const walk = applyTool(working, "set_dimension", { id: "walkable", enabled: true });
+    working = walk.matrix;
     notes.push("Walkable location preferred.");
+    if (text.includes("great coffee") || text.includes("great cafe") || text.includes("create coffee")) {
+      const rub = applyTool(working, "add_manual_rubric", { label: "Great coffee shop (taste)", weight: 6 });
+      working = rub.matrix;
+      notes.push("Added a taste rubric for coffee-shop quality.");
+    }
   }
 
   if (text.includes("flood")) {
-    const applied = applyTool(working, "set_dimension", { id: "flood", enabled: true, mustHave: true });
-    working = applied.matrix;
-    notes.push("Avoid high flood-risk zones (AE/VE).");
+    const nuance =
+      text.includes("sewage") ||
+      text.includes("backup") ||
+      text.includes("ponding") ||
+      text.includes("every time it rains") ||
+      text.includes("drainage") ||
+      text.includes("resistant") ||
+      (text.includes("flood zone") && (text.includes("but") || text.includes("still") || text.includes("in a zone")));
+    const flood = applyTool(working, "set_dimension", {
+      id: "flood",
+      enabled: true,
+      mustHave: !nuance,
+      prefs: { acceptSfha: nuance },
+    });
+    working = flood.matrix;
+    if (nuance) {
+      const drain = applyTool(working, "set_dimension", { id: "flood_resilience", enabled: true, mustHave: true });
+      working = drain.matrix;
+      notes.push("FEMA high zone is OK. Must-have is drainage: avoid streets that pond or back up sewage after ordinary rain.");
+    } else {
+      notes.push("Avoid high FEMA flood-risk zones (AE/VE).");
+    }
   }
 
   if (text.includes("long term") || text.includes("long-term") || text.includes("10 year")) {

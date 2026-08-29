@@ -8,6 +8,7 @@ import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
 import { queryFromMatrix } from "../lib/rentcast";
+import { inferVibe } from "../lib/osm-amenities";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -82,6 +83,66 @@ async function main() {
   );
   assert(valricoQ.city === "Valrico", "named city is a tight search");
   assert(valricoQ.radius == null, "no metro radius when a city is named");
+
+  assert(inferVibe(2, 8) === "local_center", "shops + café = local center");
+  assert(inferVibe(0, 1) === "sleepy", "few shops = sleepy");
+  assert(inferVibe(12, 40) === "busy", "dense POIs = busy");
+
+  const vibeMx = applyTool(matrix, "set_dimension", {
+    id: "neighborhood_vibe",
+    enabled: true,
+    prefs: { prefer: "local_center" },
+  }).matrix;
+  const centerHome = {
+    ...sample,
+    facts: { ...sample.facts, cafeCount: 2, shopCount: 8, neighborhoodVibe: "local_center" as const },
+  };
+  const vibeScore = grade(centerHome, vibeMx).perDimension.find((d) => d.id === "neighborhood_vibe");
+  assert(vibeScore?.score === 100, "local center matches");
+
+  const coffeeMx = applyTool(matrix, "set_dimension", {
+    id: "local_amenities",
+    enabled: true,
+    mustHave: true,
+    prefs: { requireCoffee: true, requireShops: true },
+  }).matrix;
+  const noCafe = grade(
+    { ...sample, facts: { ...sample.facts, cafeCount: 0, shopCount: 8 } },
+    coffeeMx
+  );
+  assert(noCafe.perDimension.find((d) => d.id === "local_amenities")?.mustHaveFailed, "no café fails coffee must");
+
+  const aeHome = { ...sample, facts: { ...sample.facts, floodZone: "AE", sfha: true } };
+  const avoidAe = applyTool(matrix, "set_dimension", {
+    id: "flood",
+    enabled: true,
+    mustHave: true,
+    prefs: { acceptSfha: false },
+  }).matrix;
+  assert(grade(aeHome, avoidAe).perDimension.find((d) => d.id === "flood")?.mustHaveFailed, "AE fails avoid-SFHA");
+  const acceptAe = applyTool(matrix, "set_dimension", {
+    id: "flood",
+    enabled: true,
+    mustHave: false,
+    prefs: { acceptSfha: true },
+  }).matrix;
+  assert(!grade(aeHome, acceptAe).perDimension.find((d) => d.id === "flood")?.mustHaveFailed, "AE allowed when accepted");
+  const drainMx = applyTool(acceptAe, "set_dimension", { id: "flood_resilience", enabled: true, mustHave: true }).matrix;
+  const ponded = grade(
+    { ...sample, facts: { ...sample.facts, drainageQuality: "poor", streetFlooding: true } },
+    drainMx
+  );
+  assert(ponded.mustHaveFailed, "sewage/ponding fails drainage must");
+
+  const soft = await runMatrixChat(
+    matrix,
+    [],
+    "walk to local shops and a great coffee shop. in a flood zone but I don't want sewage backup every time it rains"
+  );
+  assert(soft.matrix.dimensions.neighborhood_vibe.enabled, "vibe on");
+  assert(soft.matrix.dimensions.local_amenities.prefs?.requireCoffee, "coffee required");
+  assert(soft.matrix.dimensions.flood.prefs?.acceptSfha, "FEMA AE accepted");
+  assert(soft.matrix.dimensions.flood_resilience.mustHave, "drainage must");
 
   const mom = await runMatrixChat(
     matrix,

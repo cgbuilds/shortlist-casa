@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { applyFactOverrides, grade } from "@/lib/grade";
 import { rememberListing } from "@/lib/rentcast";
+import { enrichListingsForMatrix } from "@/lib/osm-amenities";
 import { getSessionUser, loadActiveMatrix, loadListing, saveGrade } from "@/lib/session";
 import type { PropertyListing } from "@/lib/types";
 
@@ -11,7 +12,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const listing = await loadListing(user, id);
   if (!listing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const matrix = await loadActiveMatrix(user);
-  return NextResponse.json({ listing, grade: grade(listing, matrix) });
+  const [enriched] = await enrichListingsForMatrix([listing], matrix);
+  rememberListing(enriched);
+  return NextResponse.json({ listing: enriched, grade: grade(enriched, matrix) });
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {

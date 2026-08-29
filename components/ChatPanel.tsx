@@ -18,7 +18,7 @@ export function ChatPanel({
     {
       role: "assistant",
       content:
-        "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type (townhouse, single-family, condo). After those, add any custom must-haves.",
+        "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
     },
   ]);
   const [text, setText] = useState("");

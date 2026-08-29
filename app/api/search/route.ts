@@ -10,12 +10,14 @@ import {
   RENTCAST_SIGNUP_URL,
   searchListings,
 } from "@/lib/rentcast";
+import { enrichListingsForMatrix } from "@/lib/osm-amenities";
 import { ensureMatrix } from "@/lib/matrix-tools";
 import { getSessionUser, getUserListings, loadActiveMatrix, saveGrade, saveSearch, saveUserListings } from "@/lib/session";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
-function rank(listings: PropertyListing[], matrix: UserMatrix) {
-  return listings
+async function rank(listings: PropertyListing[], matrix: UserMatrix) {
+  const ready = await enrichListingsForMatrix(listings, matrix);
+  return ready
     .map((listing) => {
       rememberListing(listing);
       const g = grade(listing, matrix);
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No rows parsed. Use Redfin → Favorites → Download CSV." }, { status: 400 });
     }
     saveUserListings(user, parsed);
-    const ranked = rank(filterList(parsed, body), matrix);
+    const ranked = await rank(filterList(parsed, body), matrix);
     await saveSearch(user, { source: "upload" }, ranked.map((r) => r.listing.id));
     for (const row of ranked) await saveGrade(user, row.listing, row.grade);
     return NextResponse.json({
@@ -118,7 +120,7 @@ export async function POST(request: Request) {
       });
     }
     saveUserListings(user, result.listings);
-    const ranked = rank(result.listings, matrix);
+    const ranked = await rank(result.listings, matrix);
     await saveSearch(user, { source: "live", query }, ranked.map((r) => r.listing.id));
     for (const row of ranked) await saveGrade(user, row.listing, row.grade);
     const top = ranked.filter((r) => !r.grade.mustHaveFailed);
@@ -141,7 +143,7 @@ export async function POST(request: Request) {
       maxPrice: body.maxPrice,
       address: parsed || undefined,
     });
-    const ranked = rank(result.listings, matrix);
+    const ranked = await rank(result.listings, matrix);
     await saveSearch(user, body, ranked.map((r) => r.listing.id));
     for (const row of ranked) await saveGrade(user, row.listing, row.grade);
     return NextResponse.json({ source: result.source, notice: result.notice, results: ranked });
@@ -150,7 +152,7 @@ export async function POST(request: Request) {
   const listings = body.source === "favorites" ? loadBundledRedfinFavorites() : getUserListings(user);
   if (body.source === "favorites") saveUserListings(user, listings);
   const city = body.city || (body.q && !parseAddressFromInput(body.q) && !/\d/.test(body.q) ? body.q : undefined);
-  const ranked = rank(filterList(listings, { ...body, city, q: city ? undefined : body.q }), matrix);
+  const ranked = await rank(filterList(listings, { ...body, city, q: city ? undefined : body.q }), matrix);
   await saveSearch(user, body, ranked.map((r) => r.listing.id));
   for (const row of ranked) await saveGrade(user, row.listing, row.grade);
   return NextResponse.json({

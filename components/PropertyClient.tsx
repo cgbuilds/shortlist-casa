@@ -50,8 +50,9 @@ export function PropertyClient({
       <section>
         <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl">Fill gaps the feed missed</h2>
         <p className="mb-4 text-sm text-[var(--muted)]">
-          Redfin CSV does not include garage, laundry, flood zone, walkability, or end unit. Fill those
-          and regrade.
+          Redfin CSV does not include garage, laundry, flood zone, walkability, or drainage.
+          Nearby cafés and shops are counted from the map when we have coordinates. Override feel and
+          drainage here.
         </p>
         <FactsForm
           listing={listing}

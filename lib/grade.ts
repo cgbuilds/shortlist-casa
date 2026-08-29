@@ -1,4 +1,5 @@
 import { CATALOG, catalogById, parseSearchArea } from "@/kb/catalog";
+import { inferVibe } from "@/lib/osm-amenities";
 import type {
   DimensionScore,
   GradeResult,
@@ -190,14 +191,73 @@ function evaluateDimension(
       };
     }
     case "walkable": {
-      if (listing.facts.walkable == null)
-        return { id, ...unknownScore(matrix, "Walkability unknown — mark on the property page"), mustHaveFailed: false };
+      const cafes = listing.facts.cafeCount;
+      const shops = listing.facts.shopCount;
+      const inferred =
+        listing.facts.walkable ??
+        (cafes != null && shops != null ? cafes >= 1 && shops >= 2 : null);
+      if (inferred == null)
+        return { id, ...unknownScore(matrix, "Walkability unknown — nearby shops not counted yet"), mustHaveFailed: false };
       return {
         id,
-        score: listing.facts.walkable ? 100 : 30,
+        score: inferred ? 100 : 30,
         unknown: false,
-        mustHaveFailed: !!knobs.mustHave && !listing.facts.walkable,
-        reason: listing.facts.walkable ? "Walkable" : "Car-dependent",
+        mustHaveFailed: !!knobs.mustHave && !inferred,
+        reason:
+          cafes != null
+            ? inferred
+              ? `Walkable (${cafes} cafés, ${shops} shops nearby)`
+              : `Car-dependent (${cafes} cafés, ${shops} shops nearby)`
+            : inferred
+              ? "Walkable"
+              : "Car-dependent",
+      };
+    }
+    case "neighborhood_vibe": {
+      const cafes = listing.facts.cafeCount;
+      const shops = listing.facts.shopCount;
+      const vibe =
+        listing.facts.neighborhoodVibe ??
+        (cafes != null && shops != null ? inferVibe(cafes, shops) : null);
+      if (!vibe)
+        return { id, ...unknownScore(matrix, "Neighborhood feel unknown until shops/cafés are counted"), mustHaveFailed: false };
+      const prefer = String(knobs.prefs?.prefer ?? "local_center");
+      const labels: Record<string, string> = {
+        sleepy: "laid-back / sleepy",
+        local_center: "local city-center",
+        busy: "busy / high-traffic",
+      };
+      const score =
+        vibe === prefer ? 100 : prefer === "local_center" && vibe === "busy" ? 30 : prefer === "local_center" && vibe === "sleepy" ? 40 : 50;
+      return {
+        id,
+        score,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && vibe !== prefer,
+        reason: `${labels[vibe] ?? vibe} (want ${labels[prefer] ?? prefer})`,
+      };
+    }
+    case "local_amenities": {
+      const cafes = listing.facts.cafeCount;
+      const shops = listing.facts.shopCount;
+      if (cafes == null && shops == null)
+        return { id, ...unknownScore(matrix, "Nearby cafés/shops not counted yet"), mustHaveFailed: false };
+      const coffeeN = cafes ?? 0;
+      const shopN = shops ?? 0;
+      const needCoffee = Boolean(knobs.prefs?.requireCoffee);
+      const needShops = Boolean(knobs.prefs?.requireShops);
+      const coffeeOk = !needCoffee || coffeeN >= 1;
+      const shopsOk = !needShops || shopN >= 3;
+      let score = 40;
+      if (coffeeN >= 1 && shopN >= 3) score = 100;
+      else if (coffeeN >= 1) score = 75;
+      else if (shopN >= 3) score = 60;
+      return {
+        id,
+        score,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && (!coffeeOk || !shopsOk),
+        reason: `${coffeeN} café${coffeeN === 1 ? "" : "s"}, ${shopN} shops within a short walk`,
       };
     }
     case "flood": {
@@ -206,6 +266,18 @@ function evaluateDimension(
         return { id, ...unknownScore(matrix, "Flood zone unknown — check FEMA / listing"), mustHaveFailed: false };
       const high = listing.facts.sfha === true || (zone != null && /^(A|AE|AH|AO|VE|V)/.test(zone));
       const x = zone === "X" || zone === "X500" || zone === "AREA X";
+      const acceptSfha = Boolean(knobs.prefs?.acceptSfha);
+      if (acceptSfha) {
+        return {
+          id,
+          score: high ? 55 : x ? 90 : 70,
+          unknown: false,
+          mustHaveFailed: false,
+          reason: high
+            ? `${zone || "SFHA"} — FEMA high zone accepted; score drainage separately`
+            : `Lower FEMA risk (${zone || "not SFHA"})`,
+        };
+      }
       return {
         id,
         score: high ? 10 : x ? 100 : 60,
@@ -213,6 +285,35 @@ function evaluateDimension(
         mustHaveFailed: !!knobs.mustHave && high,
         reason: high ? `Flood risk (${zone || "SFHA"})` : `Lower flood risk (${zone || "not SFHA"})`,
       };
+    }
+    case "flood_resilience": {
+      const drainage = listing.facts.drainageQuality;
+      const street = listing.facts.streetFlooding;
+      if (drainage == null && street == null)
+        return {
+          id,
+          ...unknownScore(matrix, "Drainage unknown — mark ponding / sewage backup on the property page"),
+          mustHaveFailed: false,
+        };
+      if (drainage === "poor" || street === true) {
+        return {
+          id,
+          score: 15,
+          unknown: false,
+          mustHaveFailed: !!knobs.mustHave,
+          reason: street ? "Street / sewage flooding after rain" : "Poor drainage",
+        };
+      }
+      if (drainage === "high" && street === false) {
+        return { id, score: 100, unknown: false, mustHaveFailed: false, reason: "Drains well; no regular street flooding" };
+      }
+      if (drainage === "high") {
+        return { id, score: 85, unknown: false, mustHaveFailed: false, reason: "Good drainage" };
+      }
+      if (street === false) {
+        return { id, score: 75, unknown: false, mustHaveFailed: false, reason: "No regular street flooding noted" };
+      }
+      return { id, score: 55, unknown: false, mustHaveFailed: false, reason: "Mixed drainage" };
     }
     case "long_term": {
       if (listing.yearBuilt == null)
