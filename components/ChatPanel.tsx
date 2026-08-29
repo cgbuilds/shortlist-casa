@@ -18,7 +18,7 @@ export function ChatPanel({
     {
       role: "assistant",
       content:
-        "We’ll build a grader from the catalog. Paste a family member’s gates in one note — townhouse, garage, 3 floors or less, 2+ bed/bath, laundry, walkable, flood — then commit and grade the Redfin CSV.",
+        "Tell me what matters (beds, townhouse, flood, school area). I’ll lock a grader. Then upload a Redfin CSV on this same page — list or list + map, like Zillow.",
     },
   ]);
   const [text, setText] = useState("");
@@ -97,7 +97,7 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex h-[min(70vh,640px)] flex-col rounded-2xl border border-[var(--line)] bg-[var(--paper-2)]">
+    <div className="flex min-h-0 flex-1 flex-col rounded-none border-0 bg-transparent">
       <div className="border-b border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
         Chat provider: <span className="text-[var(--ink)]">{provider.label}</span>
         {provider.model ? ` · ${provider.model}` : ""}
@@ -119,11 +119,7 @@ export function ChatPanel({
         {lastMeta && !pending ? <p className="text-xs text-[var(--muted)]">{lastMeta}</p> : null}
         {committed ? (
           <p className="text-xs text-[var(--accent)]">
-            Active matrix saved.{" "}
-            <a href="#upload-csv" className="underline">
-              Upload a Redfin CSV
-            </a>{" "}
-            above to grade homes.
+            Matrix saved. Upload a CSV below — homes will grade on this page.
           </p>
         ) : null}
       </div>

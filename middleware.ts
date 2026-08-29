@@ -4,10 +4,12 @@ import { updateSession } from "@/lib/supabase/middleware";
 export async function middleware(request: NextRequest) {
   const response = await updateSession(request);
   const { pathname } = request.nextUrl;
-  const protectedPath =
-    pathname.startsWith("/matrix") ||
-    pathname.startsWith("/search") ||
-    pathname.startsWith("/property");
+  if (pathname === "/matrix" || pathname === "/search") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/app";
+    return NextResponse.redirect(url);
+  }
+  const protectedPath = pathname.startsWith("/app") || pathname.startsWith("/property");
   if (!protectedPath) return response;
 
   const hasDemo = request.cookies.get("pm_demo")?.value === "1";

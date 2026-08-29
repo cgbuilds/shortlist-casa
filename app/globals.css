@@ -18,8 +18,11 @@
   --font-display: var(--font-display);
 }
 
-.chat-md-invert {
-  color: var(--paper);
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 0;
+  background: #e8e2d6;
 }
 .chat-md-invert a {
   color: var(--paper);

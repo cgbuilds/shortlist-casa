@@ -5,7 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/client";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") ?? "/matrix";
+  const next = url.searchParams.get("next") ?? "/app";
   if (code && isSupabaseConfigured()) {
     const supabase = await createSupabaseServer();
     if (supabase) await supabase.auth.exchangeCodeForSession(code);

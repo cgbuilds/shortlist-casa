@@ -12,16 +12,19 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
+    "leaflet": "^1.9.4",
     "next": "15.5.24",
     "openai": "^7.8.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-leaflet": "^5.0.0",
     "react-markdown": "^10.1.0",
     "zod": "^4.5.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
