@@ -73,7 +73,7 @@ function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): Prop
       ...extra?.facts,
       propertyType: mapRcType(raw.propertyType),
       hoa: hoaFee != null ? hoaFee > 0 : extra?.facts?.hoa ?? null,
-      schoolArea: extra?.facts?.schoolArea ?? city || null,
+      schoolArea: extra?.facts?.schoolArea ?? (city || null),
     },
   };
 }
