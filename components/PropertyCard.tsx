@@ -9,7 +9,7 @@ export function PropertyCard({
   listing: PropertyListing;
   grade: GradeResult;
 }) {
-  const links = outboundListingLinks(listing.address, listing.city, listing.state, listing.zip);
+  const links = outboundListingLinks(listing);
   return (
     <article className="rounded-2xl border border-[var(--line)] bg-[var(--paper-2)] p-4">
       <div className="flex items-start justify-between gap-3">
@@ -24,9 +24,11 @@ export function PropertyCard({
         <ScorePill grade={grade} />
       </div>
       <p className="mt-3 text-sm">
-        {listing.beds ?? "—"} bd · {listing.baths ?? "—"} ba · {listing.sqft?.toLocaleString() ?? "—"} sf
+        {listing.facts.propertyType ?? "home"} · {listing.beds ?? "—"} bd · {listing.baths ?? "—"} ba ·{" "}
+        {listing.sqft?.toLocaleString() ?? "—"} sf
         {listing.listPrice ? ` · $${listing.listPrice.toLocaleString()}` : ""}
         {listing.daysOnMarket != null ? ` · ${listing.daysOnMarket} DOM` : ""}
+        {listing.status ? ` · ${listing.status}` : ""}
       </p>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         {links.map((l) => (

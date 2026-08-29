@@ -23,7 +23,8 @@ export function MatrixClient({ initial }: { initial: UserMatrix }) {
       <div>
         <h1 className="font-[family-name:var(--font-display)] text-3xl">Build your matrix</h1>
         <p className="mt-2 mb-4 max-w-xl text-sm text-[var(--muted)]">
-          Talk through must-haves. The bot can only toggle catalog dimensions, weights, and budget caps.
+          Paste free text (Mom’s gates, your own). The bot can only toggle catalog dimensions. Then open Search
+          to grade the Redfin favorites CSV.
         </p>
         <ChatPanel
           matrix={matrix}

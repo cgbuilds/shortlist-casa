@@ -15,7 +15,7 @@ export function ChatPanel({
     {
       role: "assistant",
       content:
-        "We’ll build a grader from the catalog — not a blank spreadsheet. Start with must-haves: beds, baths, and minimum living area.",
+        "We’ll build a grader from the catalog. Paste a family member’s gates in one note — townhouse, garage, 3 floors or less, 2+ bed/bath, laundry, walkable, flood — then commit and grade the Redfin CSV.",
     },
   ]);
   const [text, setText] = useState("");
@@ -71,10 +71,11 @@ export function ChatPanel({
           void send();
         }}
       >
-        <input
+        <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="e.g. 4 bed, 2500 sf min, block, Bloomingdale HS, $525k cap"
+          placeholder="townhouse w/ garage or 3 floors or less; end unit; 2+ bed; 2+ bath; in-unit W/D; walkable; not high flood risk; long term"
+          rows={3}
           className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm"
         />
         <button className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm text-white" type="submit">

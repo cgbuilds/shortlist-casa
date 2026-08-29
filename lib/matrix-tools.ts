@@ -1,4 +1,4 @@
-import { CATALOG, CATALOG_VERSION, defaultMatrix, SCHOOL_AREA_OPTIONS, catalogById } from "@/kb/catalog";
+import { CATALOG, CATALOG_VERSION, defaultMatrix, catalogById } from "@/kb/catalog";
 import type { DimensionKnobs, ManualRubric, UnknownPolicy, UserMatrix } from "@/lib/types";
 
 const ALLOWED_KNOB_KEYS = new Set([
@@ -60,7 +60,7 @@ export function setBudget(
 ): UserMatrix {
   const { unknownPolicy, locationAllowlist: allowIn, ...budgetPatch } = patch;
   const locationAllowlist = allowIn
-    ? allowIn.filter((a) => SCHOOL_AREA_OPTIONS.some((opt) => opt.toLowerCase() === a.toLowerCase()))
+    ? allowIn.map((a) => a.trim()).filter((a) => a.length >= 2 && a.length <= 40)
     : matrix.locationAllowlist;
   return {
     ...matrix,

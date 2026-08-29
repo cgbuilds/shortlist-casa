@@ -30,7 +30,7 @@ export function estimatePitia(listing: PropertyListing, matrix: UserMatrix): num
     rate === 0 ? principal / n : (principal * rate) / (1 - Math.pow(1 + rate, -n));
   const taxMonthly = (listing.listPrice * ((matrix.budget.taxRatePct ?? 1.1) / 100)) / 12;
   const ins = matrix.budget.insuranceMonthly ?? 250;
-  const hoa = listing.facts.hoa ? 80 : 0;
+  const hoa = listing.hoaMonthly ?? (listing.facts.hoa ? 80 : 0);
   const cdd = listing.facts.cdd ? 150 : 0;
   return Math.round(pAndI + taxMonthly + ins + hoa + cdd);
 }
@@ -116,17 +116,115 @@ function evaluateDimension(
       };
     }
     case "stories": {
-      if (listing.facts.stories == null)
-        return { id, ...unknownScore(matrix, "Stories unknown"), mustHaveFailed: !!knobs.mustHave };
-      const max = knobs.max ?? 1;
+      const max = knobs.max ?? 3;
+      const type = listing.facts.propertyType;
+      if (listing.facts.stories == null) {
+        if (type === "sfr") {
+          return {
+            id,
+            score: 85,
+            unknown: false,
+            mustHaveFailed: false,
+            reason: `SFR assumed ≤${max} stories (low special-assessment risk)`,
+          };
+        }
+        return { id, ...unknownScore(matrix, "Stories unknown"), mustHaveFailed: false };
+      }
       const stories = listing.facts.stories;
-      const score = stories <= max ? 100 : stories === max + 1 ? 50 : 20;
+      const score = stories <= max ? 100 : stories === max + 1 ? 40 : 10;
       return {
         id,
         score,
         unknown: false,
         mustHaveFailed: !!knobs.mustHave && stories > max,
-        reason: `${stories} stor${stories === 1 ? "y" : "ies"} (max ${max})`,
+        reason: `${stories} stor${stories === 1 ? "y" : "ies"} (max ${max} to limit special assessments)`,
+      };
+    }
+    case "property_type": {
+      const t = listing.facts.propertyType;
+      if (!t) return { id, ...unknownScore(matrix, "Property type unknown"), mustHaveFailed: false };
+      const prefer = String(knobs.prefs?.prefer ?? "townhouse");
+      const score = t === prefer ? 100 : t === "sfr" && prefer === "townhouse" ? 55 : t === "condo" ? 70 : 40;
+      return {
+        id,
+        score,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && t !== prefer,
+        reason: `${t} (prefer ${prefer})`,
+      };
+    }
+    case "garage": {
+      if (listing.facts.garage == null)
+        return { id, ...unknownScore(matrix, "Garage unknown — fill from the listing"), mustHaveFailed: false };
+      return {
+        id,
+        score: listing.facts.garage ? 100 : 25,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && !listing.facts.garage,
+        reason: listing.facts.garage ? "Garage" : "No garage",
+      };
+    }
+    case "laundry": {
+      if (listing.facts.inUnitLaundry == null)
+        return { id, ...unknownScore(matrix, "Laundry unknown — fill from the listing"), mustHaveFailed: false };
+      return {
+        id,
+        score: listing.facts.inUnitLaundry ? 100 : 15,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && !listing.facts.inUnitLaundry,
+        reason: listing.facts.inUnitLaundry ? "In-unit washer/dryer" : "No in-unit laundry",
+      };
+    }
+    case "end_unit": {
+      if (listing.facts.propertyType === "sfr") {
+        return { id, score: 70, unknown: false, mustHaveFailed: false, reason: "SFR — end-unit N/A (sunlight typically fine)" };
+      }
+      if (listing.facts.endUnit == null)
+        return { id, ...unknownScore(matrix, "End unit unknown"), mustHaveFailed: false };
+      return {
+        id,
+        score: listing.facts.endUnit ? 100 : 40,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && !listing.facts.endUnit,
+        reason: listing.facts.endUnit ? "End unit" : "Interior unit",
+      };
+    }
+    case "walkable": {
+      if (listing.facts.walkable == null)
+        return { id, ...unknownScore(matrix, "Walkability unknown — mark on the property page"), mustHaveFailed: false };
+      return {
+        id,
+        score: listing.facts.walkable ? 100 : 30,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && !listing.facts.walkable,
+        reason: listing.facts.walkable ? "Walkable" : "Car-dependent",
+      };
+    }
+    case "flood": {
+      const zone = listing.facts.floodZone?.toUpperCase() ?? null;
+      if (!zone && listing.facts.sfha == null)
+        return { id, ...unknownScore(matrix, "Flood zone unknown — check FEMA / listing"), mustHaveFailed: false };
+      const high = listing.facts.sfha === true || (zone != null && /^(A|AE|AH|AO|VE|V)/.test(zone));
+      const x = zone === "X" || zone === "X500" || zone === "AREA X";
+      return {
+        id,
+        score: high ? 10 : x ? 100 : 60,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && high,
+        reason: high ? `Flood risk (${zone || "SFHA"})` : `Lower flood risk (${zone || "not SFHA"})`,
+      };
+    }
+    case "long_term": {
+      if (listing.yearBuilt == null)
+        return { id, ...unknownScore(matrix, "Year built unknown"), mustHaveFailed: false };
+      const min = knobs.min ?? 1990;
+      const age = new Date().getFullYear() - listing.yearBuilt;
+      return {
+        id,
+        score: listing.yearBuilt >= min ? (age <= 15 ? 100 : age <= 30 ? 80 : 60) : 35,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && listing.yearBuilt < min,
+        reason: `Built ${listing.yearBuilt} (~${age} yrs; long-term floor ${min})`,
       };
     }
     case "roof_age": {
@@ -268,11 +366,12 @@ function evaluateDimension(
       };
     }
     case "school_area": {
-      const area = listing.facts.schoolArea;
-      if (!area) return { id, ...unknownScore(matrix, "School area unknown"), mustHaveFailed: !!knobs.mustHave };
+      const area = listing.facts.schoolArea || listing.city;
+      if (!area) return { id, ...unknownScore(matrix, "School area unknown"), mustHaveFailed: false };
+      const hay = `${area} ${listing.city} ${listing.neighborhood ?? ""}`.toLowerCase();
       const ok =
         matrix.locationAllowlist.length === 0 ||
-        matrix.locationAllowlist.some((a) => a.toLowerCase() === area.toLowerCase());
+        matrix.locationAllowlist.some((a) => hay.includes(a.toLowerCase()) || a.toLowerCase() === area.toLowerCase());
       return {
         id,
         score: ok ? 100 : 20,

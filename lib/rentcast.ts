@@ -1,3 +1,4 @@
+import { findRedfinListing } from "@/lib/redfin-csv";
 import { SEED_LISTINGS, slugAddress } from "@/data/listings";
 import type { PropertyListing } from "@/lib/types";
 
@@ -178,5 +179,5 @@ export function rememberListing(listing: PropertyListing) {
 }
 
 export function recallListing(id: string) {
-  return memoryStore.get(id) ?? getSeedListing(id);
+  return memoryStore.get(id) ?? findRedfinListing(id) ?? getSeedListing(id);
 }

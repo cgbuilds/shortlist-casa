@@ -15,7 +15,7 @@ export default async function HomePage() {
         </h1>
         <p className="mt-4 max-w-md text-[var(--muted)]">
           Categories come from a knowledge base (structure, seller motivation, PITIA slack, school area).
-          Search uses RentCast when configured, plus outbound links to the sites you already use.
+          Search uses your Redfin favorites CSV first. Chat turns family notes into a constrained rating matrix.
         </p>
       </div>
       <div className="rounded-3xl border border-[var(--line)] bg-[var(--paper-2)] p-6 shadow-sm">

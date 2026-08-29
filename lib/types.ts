@@ -2,6 +2,8 @@ export type UnknownPolicy = "skip" | "penalize";
 
 export type ConstructionType = "block" | "frame" | "other";
 
+export type PropertyType = "sfr" | "townhouse" | "condo" | "multi" | "other";
+
 export type PropertyFacts = {
   construction?: ConstructionType | null;
   stories?: number | null;
@@ -16,6 +18,13 @@ export type PropertyFacts = {
   failedPending?: boolean | null;
   priceCutCount?: number | null;
   sellerCreditPreferred?: boolean | null;
+  propertyType?: PropertyType | null;
+  garage?: boolean | null;
+  endUnit?: boolean | null;
+  inUnitLaundry?: boolean | null;
+  floodZone?: string | null;
+  sfha?: boolean | null;
+  walkable?: boolean | null;
 };
 
 export type PropertyListing = {
@@ -34,6 +43,12 @@ export type PropertyListing = {
   longitude?: number | null;
   status?: string | null;
   photoUrl?: string | null;
+  listingUrl?: string | null;
+  hoaMonthly?: number | null;
+  neighborhood?: string | null;
+  mls?: string | null;
+  saleType?: string | null;
+  pricePerSqft?: number | null;
   facts: PropertyFacts;
 };
 

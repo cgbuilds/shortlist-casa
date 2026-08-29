@@ -16,7 +16,7 @@ export function PropertyClient({
 }) {
   const [listing, setListing] = useState(initialListing);
   const [g, setG] = useState(initialGrade);
-  const links = outboundListingLinks(listing.address, listing.city, listing.state, listing.zip);
+  const links = outboundListingLinks(listing);
 
   return (
     <div className="space-y-8">
@@ -50,7 +50,8 @@ export function PropertyClient({
       <section>
         <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl">Fill gaps the feed missed</h2>
         <p className="mb-4 text-sm text-[var(--muted)]">
-          Roof age, block vs frame, and school area are often missing from APIs. Enrich and regrade.
+          Redfin CSV does not include garage, laundry, flood zone, walkability, or end unit. Fill those
+          and regrade.
         </p>
         <FactsForm
           listing={listing}

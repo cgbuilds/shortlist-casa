@@ -1,6 +1,6 @@
 # Homestead Matrix
 
-Chat-built home rating matrix for family and friends. Users configure categories from a **fixed knowledge-base catalog** (not a blank spreadsheet). Search uses **RentCast** when an API key is present, otherwise Hillsborough **seed listings**. Results link out to Zillow, Redfin, Realtor.com, and the county appraiser. No scraping.
+Chat-built home rating matrix for family. **v1 grades a Redfin Favorites CSV** (the Valrico-area export is bundled). Users paste free-text gates in chat; the bot can only toggle a knowledge-base catalog.
 
 ## Local run
 
@@ -10,48 +10,33 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and click **Continue in demo mode**. Demo works with no keys.
+Open [http://localhost:3000](http://localhost:3000) → **Continue in demo mode**.
 
-Optional keys in `.env.local` / Vercel:
+1. **Matrix** — paste Mom’s gates (townhouse, garage, ≤3 stories, 2+ bed/bath, in-unit laundry, walkable, not high flood, long term) → **commit**.
+2. **Search** — grades the bundled Redfin favorites; or upload a new Redfin CSV (Favorites → Download).
 
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Auth + persistence for family accounts |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server Supabase client |
-| `SUPABASE_SERVICE_ROLE` | Unused in v1 (reserved) |
-| `OPENAI_API_KEY` | Matrix chatbot (without it, a keyword demo coach still mutates the catalog) |
-| `OPENAI_MODEL` | Defaults to `gpt-4o-mini` |
-| `RENTCAST_API_KEY` | Live sale listings / address lookup |
-| `NEXT_PUBLIC_SITE_URL` | Canonical origin (logout/redirects) |
+Redfin does not include garage, laundry, end unit, flood, or walkability. Mark those on a property page and regrade. Listing links use the CSV’s real Redfin URL.
 
-## GitHub
+## Alpha chat (free-tier AI)
 
-1. Create an empty repository on GitHub (private is fine).
-2. From this folder:
+No key required: a built-in keyword coach still applies catalog tools.
 
-```bash
-git remote add origin git@github.com:<you>/<repo>.git
-git branch -M main
-git push -u origin main
-```
+For a real LLM on the free/cheap path (OpenAI-compatible, drop-in):
 
-## Vercel
+| Provider | Env vars | Notes |
+| --- | --- | --- |
+| **OpenRouter Auto** (recommended) | `OPENROUTER_API_KEY`, optional `OPENROUTER_MODEL=openrouter/auto` | One key; Auto routes models. New accounts get credits. Free models: `meta-llama/llama-3.3-70b-instruct:free`, `google/gemini-2.0-flash-exp:free`. |
+| **Groq** | `GROQ_API_KEY` | Fast Llama 3.3 70B free tier. |
+| OpenAI | `OPENAI_API_KEY` | Paid; used if OpenRouter/Groq unset. |
 
-1. [Import the GitHub repo](https://vercel.com/new) (framework: Next.js).
-2. Paste the env vars above.
-3. Deploy. First production URL is assigned automatically; add a custom domain later under Project → Settings → Domains.
+Get an OpenRouter key at [openrouter.ai/keys](https://openrouter.ai/keys). Put it in `.env.local` and Vercel.
 
-## Supabase (family logins)
+Priority: OpenRouter → Groq → OpenAI → built-in coach.
 
-1. Create a project.
-2. Authentication → enable Google and Email magic link. Add `https://<your-vercel-app>.vercel.app/auth/callback` to redirect URLs.
-3. SQL editor: run [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql).
-4. Copy project URL and anon key into Vercel env.
+Other env vars: `NEXT_PUBLIC_SUPABASE_*` (family logins), `RENTCAST_API_KEY` (optional live search, not the v1 path).
 
-v1 is **one matrix per login**. Share by using the same Google account, or each person builds their own.
+## GitHub + Vercel
 
-## How it grades
+Create a GitHub repo, `git push`, Import in Vercel, paste env vars.
 
-Catalog lives in [`kb/catalog.ts`](kb/catalog.ts). The chatbot may only call tools (`list_catalog`, `set_dimension`, `set_budget`, `add_manual_rubric`, `preview_matrix`, `commit_matrix`). Scoring is [`lib/grade.ts`](lib/grade.ts). Unknown enrichable fields (roof, block vs frame) can be filled on the property page.
-
-Paste a listing URL: we regex an address and look it up. We do not fetch Zillow HTML.
+Supabase SQL: [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql). Redirect URL: `https://<app>.vercel.app/auth/callback`.

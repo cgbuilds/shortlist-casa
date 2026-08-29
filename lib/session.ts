@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { ensureMatrix } from "@/lib/matrix-tools";
+import { findRedfinListing, loadBundledRedfinFavorites } from "@/lib/redfin-csv";
 import { recallListing, rememberListing } from "@/lib/rentcast";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
@@ -11,6 +12,7 @@ export type SessionUser = { id: string; email: string; demo: boolean };
 
 const memoryMatrices = new Map<string, UserMatrix>();
 const memoryGrades = new Map<string, { listing: PropertyListing; facts: PropertyListing["facts"] }[]>();
+const memoryUploads = new Map<string, PropertyListing[]>();
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   const supabase = await createSupabaseServer();
@@ -67,7 +69,7 @@ export async function saveSearch(user: SessionUser, query: unknown, listingIds: 
 export async function saveGrade(user: SessionUser, listing: PropertyListing, scores: unknown) {
   rememberListing(listing);
   const prev = memoryGrades.get(user.id) ?? [];
-  memoryGrades.set(user.id, [{ listing, facts: listing.facts }, ...prev].slice(0, 50));
+  memoryGrades.set(user.id, [{ listing, facts: listing.facts }, ...prev].slice(0, 200));
   if (user.demo || !isSupabaseConfigured()) return;
   const supabase = await createSupabaseServer();
   if (!supabase) return;
@@ -77,6 +79,15 @@ export async function saveGrade(user: SessionUser, listing: PropertyListing, sco
     property: listing,
     scores,
   });
+}
+
+export function saveUserListings(user: SessionUser, listings: PropertyListing[]) {
+  memoryUploads.set(user.id, listings);
+  listings.forEach(rememberListing);
+}
+
+export function getUserListings(user: SessionUser): PropertyListing[] {
+  return memoryUploads.get(user.id) ?? loadBundledRedfinFavorites();
 }
 
 export function memoryListingFor(userId: string, listingId: string): PropertyListing | undefined {
@@ -101,5 +112,5 @@ export async function loadListing(user: SessionUser, listingId: string): Promise
       if (data?.property) return data.property as PropertyListing;
     }
   }
-  return recallListing(listingId);
+  return recallListing(listingId) ?? findRedfinListing(listingId) ?? null;
 }

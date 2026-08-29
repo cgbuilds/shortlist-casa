@@ -26,5 +26,6 @@ export async function POST(request: Request) {
     matrix: result.matrix,
     commit: result.commit,
     usedModel: result.usedModel,
+    provider: result.provider,
   });
 }
