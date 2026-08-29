@@ -9,7 +9,6 @@ type Row = { listing: PropertyListing; grade: GradeResult };
 export function SearchClient() {
   const [q, setQ] = useState("");
   const [minBeds, setMinBeds] = useState("2");
-  const [minSqft, setMinSqft] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [notice, setNotice] = useState("");
@@ -26,7 +25,6 @@ export function SearchClient() {
           source: "favorites",
           q: q || undefined,
           minBeds: Number(minBeds) || undefined,
-          minSqft: Number(minSqft) || undefined,
           maxPrice: Number(maxPrice) || undefined,
           ...extra,
         }),
