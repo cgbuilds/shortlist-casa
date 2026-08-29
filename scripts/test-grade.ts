@@ -9,6 +9,7 @@ import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
 import { queryFromMatrix } from "../lib/rentcast";
 import { inferVibe } from "../lib/osm-amenities";
+import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull } from "../lib/listing-cache";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -83,6 +84,17 @@ async function main() {
   );
   assert(valricoQ.city === "Valrico", "named city is a tight search");
   assert(valricoQ.radius == null, "no metro radius when a city is named");
+
+  const wide = { address: "Tampa, FL", radius: 22, state: "FL", minBeds: 2, maxPrice: 600000, propertyType: "Single Family" };
+  const tight = { ...wide, minBeds: 3, maxPrice: 400000 };
+  assert(liveQueryKey(wide) !== liveQueryKey(tight), "query keys differ when floors change");
+  assert(canReusePull(wide, tight), "tighter beds/price can reuse a wider pull");
+  assert(!canReusePull(tight, wide), "wider beds/price needs a new pull");
+  rememberLivePull("cache-user", wide, [sample]);
+  const cachedHit = decideLivePull("cache-user", tight, false);
+  assert(cachedHit.action === "cache", "fresh cache is reused on Search & grade");
+  const forced = decideLivePull("cache-user", tight, true);
+  assert(forced.action === "fetch", "Refresh live ignores cache when quota remains");
 
   assert(inferVibe(2, 8) === "local_center", "shops + café = local center");
   assert(inferVibe(0, 1) === "sleepy", "few shops = sleepy");

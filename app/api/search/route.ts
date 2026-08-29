@@ -10,6 +10,15 @@ import {
   RENTCAST_SIGNUP_URL,
   searchListings,
 } from "@/lib/rentcast";
+import {
+  decideLivePull,
+  filterListingsByQuery,
+  getLiveCache,
+  getLiveQuota,
+  livePullNotice,
+  markFetched,
+  withUserQueue,
+} from "@/lib/listing-cache";
 import { enrichListingsForMatrix } from "@/lib/osm-amenities";
 import { ensureMatrix } from "@/lib/matrix-tools";
 import { getSessionUser, getUserListings, loadActiveMatrix, saveGrade, saveSearch, saveUserListings } from "@/lib/session";
@@ -52,6 +61,8 @@ export async function GET() {
   return NextResponse.json({
     liveSearch: hasLiveSearch(),
     signupUrl: RENTCAST_SIGNUP_URL,
+    quota: getLiveQuota(user.id),
+    cache: getLiveCache(user.id),
   });
 }
 
@@ -69,6 +80,7 @@ export async function POST(request: Request) {
     csv?: string;
     source?: "favorites" | "rentcast" | "upload" | "live";
     draft?: UserMatrix;
+    force?: boolean;
   };
 
   const matrix = ensureMatrix(body.draft ?? (await loadActiveMatrix(user)));
@@ -96,6 +108,7 @@ export async function POST(request: Request) {
         {
           error: `Set baseline in chat first: ${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}.`,
           liveSearch: hasLiveSearch(),
+          quota: getLiveQuota(user.id),
         },
         { status: 400 }
       );
@@ -106,28 +119,68 @@ export async function POST(request: Request) {
           error: `Add a free RentCast key (${RENTCAST_SIGNUP_URL}) as RENTCAST_API_KEY to pull live listings. Until then, upload a Redfin CSV.`,
           liveSearch: false,
           signupUrl: RENTCAST_SIGNUP_URL,
+          quota: getLiveQuota(user.id),
         },
         { status: 400 }
       );
     }
     const query = queryFromMatrix(matrix);
-    const result = await searchListings(query);
-    if (!result.listings.length) {
+    return withUserQueue(user.id, async () => {
+      const decision = decideLivePull(user.id, query, Boolean(body.force));
+      if (decision.action === "quota") {
+        return NextResponse.json(
+          {
+            error: `Monthly RentCast limit reached (${decision.quota.used}/${decision.quota.userLimit} for you, ${decision.quota.globalUsed}/${decision.quota.globalLimit} on the key). Re-grade your cached list, or wait until next month.`,
+            quota: decision.quota,
+            cache: getLiveCache(user.id),
+          },
+          { status: 429 }
+        );
+      }
+      let listings = decision.cached?.listings ?? [];
+      let pulled = false;
+      let fromCache = decision.action === "cache" || decision.action === "stale";
+      let quota = decision.quota;
+      if (decision.action === "fetch") {
+        const result = await searchListings(query);
+        if (!result.listings.length) {
+          return NextResponse.json({
+            source: result.source,
+            notice: result.notice ?? "No live listings matched that search.",
+            results: [],
+            quota,
+            cache: getLiveCache(user.id),
+          });
+        }
+        listings = result.listings;
+        quota = markFetched(user.id, query, listings);
+        pulled = true;
+        fromCache = false;
+      }
+      const filtered = filterListingsByQuery(listings, query);
+      saveUserListings(user, listings);
+      const ranked = await rank(filtered, matrix);
+      await saveSearch(user, { source: "live", query, fromCache, pulled }, ranked.map((r) => r.listing.id));
+      for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+      const top = ranked.filter((r) => !r.grade.mustHaveFailed);
+      const notice = `${livePullNotice({
+        fromCache,
+        stale: decision.action === "stale",
+        pulled,
+        count: ranked.length,
+        fetchedAt: decision.cached?.fetchedAt ?? Date.now(),
+        quota,
+        searchArea: matrix.searchArea,
+      })} ${top.length} pass must-haves.`;
       return NextResponse.json({
-        source: result.source,
-        notice: result.notice ?? "No live listings matched that search.",
-        results: [],
+        source: pulled ? "rentcast" : "cache",
+        notice,
+        results: ranked,
+        quota,
+        cache: getLiveCache(user.id),
+        fromCache,
+        pulled,
       });
-    }
-    saveUserListings(user, result.listings);
-    const ranked = await rank(result.listings, matrix);
-    await saveSearch(user, { source: "live", query }, ranked.map((r) => r.listing.id));
-    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-    const top = ranked.filter((r) => !r.grade.mustHaveFailed);
-    return NextResponse.json({
-      source: "rentcast",
-      notice: `Pulled ${result.listings.length} live listings around ${matrix.searchArea}. ${top.length} pass must-haves.`,
-      results: ranked,
     });
   }
 
@@ -152,12 +205,30 @@ export async function POST(request: Request) {
   const listings = body.source === "favorites" ? loadBundledRedfinFavorites() : getUserListings(user);
   if (body.source === "favorites") saveUserListings(user, listings);
   const city = body.city || (body.q && !parseAddressFromInput(body.q) && !/\d/.test(body.q) ? body.q : undefined);
-  const ranked = await rank(filterList(listings, { ...body, city, q: city ? undefined : body.q }), matrix);
+  let working = filterList(listings, { ...body, city, q: city ? undefined : body.q });
+  if (body.source !== "favorites" && getLiveCache(user.id)) {
+    working = filterListingsByQuery(working, queryFromMatrix(matrix));
+  }
+  const ranked = await rank(working, matrix);
   await saveSearch(user, body, ranked.map((r) => r.listing.id));
   for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+  const cache = getLiveCache(user.id);
+  const quota = getLiveQuota(user.id);
   return NextResponse.json({
-    source: body.source === "favorites" ? "redfin-favorites" : "session",
-    notice: `${listings.length} homes from ${body.source === "favorites" ? "the sample Valrico Redfin CSV" : "your current list"}. Garage, laundry, flood, and walkability are unknown until you fill them on a property.`,
+    source: body.source === "favorites" ? "redfin-favorites" : cache ? "cache" : "session",
+    notice: cache
+      ? livePullNotice({
+          fromCache: true,
+          stale: cache.stale,
+          pulled: false,
+          count: ranked.length,
+          fetchedAt: cache.fetchedAt,
+          quota,
+          searchArea: matrix.searchArea,
+        })
+      : `${listings.length} homes from ${body.source === "favorites" ? "the sample Valrico Redfin CSV" : "your current list"}.`,
     results: ranked,
+    quota,
+    cache,
   });
 }

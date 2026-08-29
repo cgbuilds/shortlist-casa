@@ -9,6 +9,9 @@ export type GradePayload = {
   source?: string;
   error?: string;
   signupUrl?: string;
+  quota?: { remaining: number; userLimit: number; globalRemaining?: number };
+  fromCache?: boolean;
+  pulled?: boolean;
 };
 
 export function RedfinUpload({
@@ -17,6 +20,9 @@ export function RedfinUpload({
   matrix,
   liveSearch,
   signupUrl,
+  remaining,
+  userLimit,
+  cacheCount,
   onGraded,
 }: {
   heading?: string;
@@ -24,13 +30,16 @@ export function RedfinUpload({
   matrix: UserMatrix;
   liveSearch?: boolean;
   signupUrl?: string;
+  remaining?: number;
+  userLimit?: number;
+  cacheCount?: number;
   onGraded?: (data: GradePayload) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("");
-  const [pending, setPending] = useState<"live" | "csv" | "sample" | "">("");
+  const [pending, setPending] = useState<"live" | "refresh" | "csv" | "sample" | "">("");
 
-  async function grade(body: Record<string, unknown>, kind: "live" | "csv" | "sample") {
+  async function grade(body: Record<string, unknown>, kind: "live" | "refresh" | "csv" | "sample") {
     setPending(kind);
     setStatus("");
     try {
@@ -42,6 +51,7 @@ export function RedfinUpload({
       const data = (await res.json()) as GradePayload;
       if (!res.ok) {
         setStatus(data.error ?? "Could not load listings.");
+        onGraded?.(data);
         return;
       }
       setStatus(data.notice ?? "Graded.");
@@ -59,6 +69,9 @@ export function RedfinUpload({
     await grade({ csv, source: "upload", draft: matrix }, "csv");
   }
 
+  const pullsLeft = remaining ?? userLimit ?? 50;
+  const limit = userLimit ?? 50;
+
   return (
     <section
       id="upload-csv"
@@ -70,9 +83,18 @@ export function RedfinUpload({
           type="button"
           className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm text-white disabled:opacity-50"
           disabled={Boolean(pending)}
-          onClick={() => void grade({ source: "live", draft: matrix }, "live")}
+          onClick={() => void grade({ source: "live", draft: matrix, force: false }, "live")}
         >
-          {pending === "live" ? "Pulling…" : "Pull live listings"}
+          {pending === "live" ? "Searching…" : "Search & grade"}
+        </button>
+        <button
+          type="button"
+          className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+          disabled={Boolean(pending) || pullsLeft <= 0}
+          title="Uses one RentCast pull even if a cache exists"
+          onClick={() => void grade({ source: "live", draft: matrix, force: true }, "refresh")}
+        >
+          {pending === "refresh" ? "Refreshing…" : "Refresh live"}
         </button>
         <button
           type="button"
@@ -100,7 +122,11 @@ export function RedfinUpload({
       </div>
       <p className="mt-2 text-xs text-[var(--muted)]">
         {liveSearch ? (
-          "Live pull uses your chat baseline (area, beds, baths, type). One search returns up to 50 actives, then we rank them."
+          <>
+            Search & grade uses a cached pull when the area/type/budget still fit ({cacheCount ?? 0} homes,
+            12h). Changing coffee, vibe, or drainage only re-grades — no pull. {pullsLeft}/{limit} pulls left
+            this month. Refresh live spends one pull.
+          </>
         ) : signupUrl ? (
           <>
             Fastest live path: free RentCast key (50 pulls/month) from{" "}

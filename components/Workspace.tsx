@@ -1,13 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
 import { RedfinUpload } from "@/components/RedfinUpload";
 import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
-import { baselineStatus, defaultMatrix } from "@/kb/catalog";
+import { defaultMatrix } from "@/kb/catalog";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -26,13 +26,22 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [showLevers, setShowLevers] = useState(true);
   const [liveSearch, setLiveSearch] = useState(false);
   const [signupUrl, setSignupUrl] = useState("https://www.rentcast.io/api");
+  const [remaining, setRemaining] = useState<number | undefined>(undefined);
+  const [userLimit, setUserLimit] = useState(50);
+  const [cacheCount, setCacheCount] = useState(0);
+  const skipMatrixGrade = useRef(true);
 
-  const applyGrade = useCallback((data: { results?: Row[]; notice?: string; error?: string }) => {
+  const applyGrade = useCallback((data: { results?: Row[]; notice?: string; error?: string; quota?: { remaining: number; userLimit: number }; cache?: { count: number } }) => {
     if (data.results) {
       setRows(data.results);
       if (data.results[0]) setSelectedId(data.results[0].listing.id);
     }
     setNotice(data.notice ?? data.error ?? "");
+    if (data.quota) {
+      setRemaining(data.quota.remaining);
+      setUserLimit(data.quota.userLimit);
+    }
+    if (data.cache?.count != null) setCacheCount(data.cache.count);
   }, []);
 
   async function refreshGrades(m?: UserMatrix) {
@@ -44,40 +53,40 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     applyGrade(await res.json());
   }
 
-  async function pullLive(m: UserMatrix) {
-    const res = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "live", draft: m }),
-    });
-    const data = await res.json();
-    applyGrade(data);
-    return data;
-  }
-
   useEffect(() => {
     void fetch("/api/search")
       .then((r) => r.json())
-      .then((data: { liveSearch?: boolean; signupUrl?: string }) => {
+      .then((data: { liveSearch?: boolean; signupUrl?: string; quota?: { remaining: number; userLimit: number }; cache?: { count: number } }) => {
         setLiveSearch(Boolean(data.liveSearch));
         if (data.signupUrl) setSignupUrl(data.signupUrl);
+        if (data.quota) {
+          setRemaining(data.quota.remaining);
+          setUserLimit(data.quota.userLimit);
+        }
+        if (data.cache?.count != null) setCacheCount(data.cache.count);
       })
       .catch(() => undefined);
     void refreshGrades();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (skipMatrixGrade.current) {
+      skipMatrixGrade.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => void refreshGrades(matrix), 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrix]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <aside className="flex h-[42vh] min-h-0 w-full shrink-0 flex-col border-[var(--line)] lg:h-auto lg:w-[22rem] lg:border-r xl:w-[26rem]">
         <ChatPanel
           matrix={matrix}
-          onMatrix={(m, committed) => {
+          onMatrix={(m) => {
             setMatrix(m);
-            if (committed) {
-              if (liveSearch && baselineStatus(m).complete) void pullLive(m);
-              else void refreshGrades(m);
-            }
           }}
         />
         <RedfinUpload
@@ -86,6 +95,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           matrix={matrix}
           liveSearch={liveSearch}
           signupUrl={signupUrl}
+          remaining={remaining}
+          userLimit={userLimit}
+          cacheCount={cacheCount}
           onGraded={(data) => applyGrade(data as { results?: Row[]; notice?: string })}
         />
         <details
