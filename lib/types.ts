@@ -1,0 +1,107 @@
+export type UnknownPolicy = "skip" | "penalize";
+
+export type ConstructionType = "block" | "frame" | "other";
+
+export type PropertyFacts = {
+  construction?: ConstructionType | null;
+  stories?: number | null;
+  roofAgeYears?: number | null;
+  hvacAgeYears?: number | null;
+  impactGlass?: boolean | null;
+  permitsClosed?: boolean | null;
+  hoa?: boolean | null;
+  cdd?: boolean | null;
+  schoolArea?: string | null;
+  countyJustValue?: number | null;
+  failedPending?: boolean | null;
+  priceCutCount?: number | null;
+  sellerCreditPreferred?: boolean | null;
+};
+
+export type PropertyListing = {
+  id: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
+  yearBuilt: number | null;
+  listPrice: number | null;
+  daysOnMarket: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  status?: string | null;
+  photoUrl?: string | null;
+  facts: PropertyFacts;
+};
+
+export type DimensionKnobs = {
+  enabled: boolean;
+  weight: number;
+  label?: string;
+  mustHave?: boolean;
+  invert?: boolean;
+  min?: number;
+  max?: number;
+  prefs?: Record<string, string | number | boolean | string[]>;
+};
+
+export type ManualRubric = {
+  id: string;
+  label: string;
+  weight: number;
+};
+
+export type BudgetSettings = {
+  maxPrice?: number;
+  maxPitia?: number;
+  minMonthlySlack?: number;
+  downPaymentPct?: number;
+  ratePct?: number;
+  taxRatePct?: number;
+  insuranceMonthly?: number;
+};
+
+export type UserMatrix = {
+  catalogVersion: string;
+  unknownPolicy: UnknownPolicy;
+  budget: BudgetSettings;
+  locationAllowlist: string[];
+  dimensions: Record<string, DimensionKnobs>;
+  manualRubrics: ManualRubric[];
+};
+
+export type DimensionScore = {
+  id: string;
+  label: string;
+  enabled: boolean;
+  weight: number;
+  score: number | null;
+  unknown: boolean;
+  mustHaveFailed: boolean;
+  reason: string;
+};
+
+export type GradeResult = {
+  total: number | null;
+  band: "strong" | "fit" | "stretch" | "pass" | "incomplete";
+  mustHaveFailed: boolean;
+  perDimension: DimensionScore[];
+  estimatedPitia: number | null;
+  monthlySlack: number | null;
+};
+
+export type CatalogDimension = {
+  id: string;
+  cluster: "must_haves" | "structure" | "motivation" | "money" | "location" | "deal";
+  defaultLabel: string;
+  description: string;
+  requiredFields: string[];
+  enrichable: boolean;
+  defaultEnabled: boolean;
+  defaultWeight: number;
+  defaultKnobs: DimensionKnobs;
+  allowedKnobs: string[];
+};
