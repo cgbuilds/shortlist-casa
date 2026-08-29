@@ -7,6 +7,7 @@ import { grade } from "../lib/grade";
 import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
+import { queryFromMatrix } from "../lib/rentcast";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -66,6 +67,21 @@ async function main() {
   const areaDim = tampaGrade.perDimension.find((d) => d.id === "school_area");
   assert(areaDim?.enabled, "area scoring on after search area");
   assert(!areaDim?.mustHaveFailed, "Valrico still in Tampa metro");
+
+  let liveMx = applyTool(matrix, "set_budget", { searchArea: "Tampa, FL" }).matrix;
+  liveMx = applyTool(liveMx, "set_dimension", { id: "beds", enabled: true, min: 3 }).matrix;
+  liveMx = applyTool(liveMx, "set_dimension", { id: "baths", enabled: true, min: 2 }).matrix;
+  liveMx = applyTool(liveMx, "set_dimension", { id: "property_type", enabled: true, prefs: { prefer: "sfr" } }).matrix;
+  const liveQ = queryFromMatrix(liveMx);
+  assert(liveQ.address === "Tampa, FL", "live search centers on metro");
+  assert(liveQ.radius === 22, "metro uses a radius, not Tampa-city-only");
+  assert(liveQ.minBeds === 3, "beds from baseline");
+  assert(liveQ.propertyType === "Single Family", "maps sfr to RentCast type");
+  const valricoQ = queryFromMatrix(
+    applyTool(liveMx, "set_budget", { searchArea: "Tampa, FL", locationAllowlist: ["Valrico"] }).matrix
+  );
+  assert(valricoQ.city === "Valrico", "named city is a tight search");
+  assert(valricoQ.radius == null, "no metro radius when a city is named");
 
   const mom = await runMatrixChat(
     matrix,

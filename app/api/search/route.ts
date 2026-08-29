@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
+import { baselineStatus } from "@/kb/catalog";
 import { grade } from "@/lib/grade";
 import { parseAddressFromInput } from "@/lib/parse-address";
 import { loadBundledRedfinFavorites, parseRedfinCsv } from "@/lib/redfin-csv";
-import { rememberListing, searchListings } from "@/lib/rentcast";
+import {
+  hasLiveSearch,
+  queryFromMatrix,
+  rememberListing,
+  RENTCAST_SIGNUP_URL,
+  searchListings,
+} from "@/lib/rentcast";
+import { ensureMatrix } from "@/lib/matrix-tools";
 import { getSessionUser, getUserListings, loadActiveMatrix, saveGrade, saveSearch, saveUserListings } from "@/lib/session";
-import type { PropertyListing } from "@/lib/types";
-import type { UserMatrix } from "@/lib/types";
+import type { PropertyListing, UserMatrix } from "@/lib/types";
 
 function rank(listings: PropertyListing[], matrix: UserMatrix) {
   return listings
@@ -37,6 +44,15 @@ function filterList(
   });
 }
 
+export async function GET() {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  return NextResponse.json({
+    liveSearch: hasLiveSearch(),
+    signupUrl: RENTCAST_SIGNUP_URL,
+  });
+}
+
 export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -49,10 +65,11 @@ export async function POST(request: Request) {
     maxPrice?: number;
     q?: string;
     csv?: string;
-    source?: "favorites" | "rentcast" | "upload";
+    source?: "favorites" | "rentcast" | "upload" | "live";
+    draft?: UserMatrix;
   };
 
-  const matrix = await loadActiveMatrix(user);
+  const matrix = ensureMatrix(body.draft ?? (await loadActiveMatrix(user)));
 
   if (body.csv) {
     const parsed = parseRedfinCsv(body.csv);
@@ -66,6 +83,48 @@ export async function POST(request: Request) {
     return NextResponse.json({
       source: "upload",
       notice: `Imported ${parsed.length} Redfin rows.`,
+      results: ranked,
+    });
+  }
+
+  if (body.source === "live") {
+    const baseline = baselineStatus(matrix);
+    if (!baseline.complete) {
+      return NextResponse.json(
+        {
+          error: `Set baseline in chat first: ${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}.`,
+          liveSearch: hasLiveSearch(),
+        },
+        { status: 400 }
+      );
+    }
+    if (!hasLiveSearch()) {
+      return NextResponse.json(
+        {
+          error: `Add a free RentCast key (${RENTCAST_SIGNUP_URL}) as RENTCAST_API_KEY to pull live listings. Until then, upload a Redfin CSV.`,
+          liveSearch: false,
+          signupUrl: RENTCAST_SIGNUP_URL,
+        },
+        { status: 400 }
+      );
+    }
+    const query = queryFromMatrix(matrix);
+    const result = await searchListings(query);
+    if (!result.listings.length) {
+      return NextResponse.json({
+        source: result.source,
+        notice: result.notice ?? "No live listings matched that search.",
+        results: [],
+      });
+    }
+    saveUserListings(user, result.listings);
+    const ranked = rank(result.listings, matrix);
+    await saveSearch(user, { source: "live", query }, ranked.map((r) => r.listing.id));
+    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+    const top = ranked.filter((r) => !r.grade.mustHaveFailed);
+    return NextResponse.json({
+      source: "rentcast",
+      notice: `Pulled ${result.listings.length} live listings around ${matrix.searchArea}. ${top.length} pass must-haves.`,
       results: ranked,
     });
   }

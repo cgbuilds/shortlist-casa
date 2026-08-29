@@ -1,6 +1,7 @@
+import { parseSearchArea } from "@/kb/catalog";
 import { findRedfinListing } from "@/lib/redfin-csv";
 import { SEED_LISTINGS, slugAddress } from "@/data/listings";
-import type { PropertyListing } from "@/lib/types";
+import type { PropertyListing, PropertyType, UserMatrix } from "@/lib/types";
 
 type RentCastListing = {
   id?: string;
@@ -19,10 +20,30 @@ type RentCastListing = {
   longitude?: number;
   status?: string;
   propertyType?: string;
+  mlsNumber?: string;
+  hoa?: { fee?: number } | null;
 };
 
-function hasRentCastKey() {
+const RC_PROPERTY_TYPE: Record<string, string> = {
+  sfr: "Single Family",
+  townhouse: "Townhouse",
+  condo: "Condo",
+  multi: "Multi-Family",
+};
+
+export const RENTCAST_SIGNUP_URL = "https://www.rentcast.io/api";
+
+export function hasLiveSearch() {
   return Boolean(process.env.RENTCAST_API_KEY);
+}
+
+function mapRcType(raw?: string): PropertyType {
+  const t = (raw || "").toLowerCase();
+  if (t.includes("town")) return "townhouse";
+  if (t.includes("condo")) return "condo";
+  if (t.includes("multi")) return "multi";
+  if (t.includes("single")) return "sfr";
+  return "other";
 }
 
 function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): PropertyListing {
@@ -30,6 +51,7 @@ function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): Prop
   const city = raw.city || "";
   const state = raw.state || "";
   const zip = raw.zipCode || "";
+  const hoaFee = raw.hoa?.fee;
   return {
     id: raw.id || slugAddress(address, city, state),
     address,
@@ -45,7 +67,14 @@ function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): Prop
     latitude: raw.latitude,
     longitude: raw.longitude,
     status: raw.status,
-    facts: extra?.facts ?? {},
+    mls: raw.mlsNumber || extra?.mls || null,
+    hoaMonthly: hoaFee ?? extra?.hoaMonthly ?? null,
+    facts: {
+      ...extra?.facts,
+      propertyType: mapRcType(raw.propertyType),
+      hoa: hoaFee != null ? hoaFee > 0 : extra?.facts?.hoa ?? null,
+      schoolArea: extra?.facts?.schoolArea ?? city || null,
+    },
   };
 }
 
@@ -54,7 +83,7 @@ async function rentcast(path: string) {
   if (!key) throw new Error("RENTCAST_API_KEY missing");
   const res = await fetch(`https://api.rentcast.io/v1${path}`, {
     headers: { Accept: "application/json", "X-Api-Key": key },
-    next: { revalidate: 300 },
+    cache: "no-store",
   });
   if (!res.ok) {
     const text = await res.text();
@@ -69,40 +98,85 @@ export type SearchQuery = {
   zip?: string;
   status?: string;
   minBeds?: number;
+  minBaths?: number;
   minSqft?: number;
   maxPrice?: number;
   address?: string;
+  radius?: number;
+  propertyType?: string;
 };
+
+export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
+  const parsed = parseSearchArea(matrix.searchArea);
+  const beds = matrix.dimensions.beds;
+  const baths = matrix.dimensions.baths;
+  const sqft = matrix.dimensions.sqft;
+  const prefer = matrix.dimensions.property_type?.enabled
+    ? String(matrix.dimensions.property_type.prefs?.prefer ?? "")
+    : "";
+  const named = matrix.locationAllowlist.filter((a) => a.trim() && !/\bhs\b/i.test(a));
+  const query: SearchQuery = {
+    status: "Active",
+    minBeds: beds?.enabled && beds.min != null ? beds.min : undefined,
+    minBaths: baths?.enabled && baths.min != null ? baths.min : undefined,
+    minSqft: sqft?.enabled && sqft.min != null ? sqft.min : undefined,
+    maxPrice: matrix.budget.maxPrice,
+    propertyType: RC_PROPERTY_TYPE[prefer],
+  };
+  if (named.length === 1 && parsed.state) {
+    query.city = named[0];
+    query.state = parsed.state;
+    return query;
+  }
+  if (parsed.city && parsed.state) {
+    query.address = `${parsed.city}, ${parsed.state}`;
+    query.radius = 22;
+    query.state = parsed.state;
+    return query;
+  }
+  if (parsed.city) {
+    query.city = parsed.city;
+    query.state = parsed.state || "FL";
+  }
+  return query;
+}
 
 export async function searchListings(query: SearchQuery): Promise<{
   listings: PropertyListing[];
   source: "rentcast" | "seed";
   notice?: string;
 }> {
-  if (query.address) {
+  if (query.address && !query.radius) {
     const one = await lookupByAddress(query.address);
     return one
       ? { listings: [one.listing], source: one.source, notice: one.notice }
-      : { listings: [], source: hasRentCastKey() ? "rentcast" : "seed" };
+      : { listings: [], source: hasLiveSearch() ? "rentcast" : "seed" };
   }
 
-  if (hasRentCastKey()) {
-    const params = new URLSearchParams({ status: query.status || "Active", limit: "20" });
-    if (query.city) params.set("city", query.city);
-    if (query.state) params.set("state", query.state);
-    if (query.zip) params.set("zipCode", query.zip);
-    if (query.minBeds) params.set("bedrooms", String(query.minBeds));
-    if (query.maxPrice) params.set("maxPrice", String(query.maxPrice));
+  if (hasLiveSearch()) {
+    const params = new URLSearchParams({ status: query.status || "Active", limit: "50" });
+    if (query.radius && (query.address || (query.city && query.state))) {
+      params.set("address", query.address || `${query.city}, ${query.state}`);
+      params.set("radius", String(query.radius));
+    } else {
+      if (query.city) params.set("city", query.city);
+      if (query.state) params.set("state", query.state);
+      if (query.zip) params.set("zipCode", query.zip);
+    }
+    if (query.minBeds != null) params.set("bedrooms", `${query.minBeds}:*`);
+    if (query.minBaths != null) params.set("bathrooms", `${query.minBaths}:*`);
+    if (query.minSqft != null) params.set("squareFootage", `${query.minSqft}:*`);
+    if (query.maxPrice != null) params.set("price", `*:${query.maxPrice}`);
+    if (query.propertyType) params.set("propertyType", query.propertyType);
     try {
       const data = (await rentcast(`/listings/sale?${params.toString()}`)) as RentCastListing[];
-      let listings = (Array.isArray(data) ? data : []).map((r) => toListing(r));
-      if (query.minSqft) listings = listings.filter((l) => (l.sqft ?? 0) >= query.minSqft!);
+      const listings = (Array.isArray(data) ? data : []).map((r) => toListing(r));
       return { listings, source: "rentcast" };
     } catch (err) {
       return {
-        listings: filterSeed(query),
-        source: "seed",
-        notice: `RentCast unavailable (${err instanceof Error ? err.message : "error"}); showing seed listings.`,
+        listings: [],
+        source: "rentcast",
+        notice: `Live search failed (${err instanceof Error ? err.message : "error"}).`,
       };
     }
   }
@@ -120,9 +194,10 @@ function filterSeed(query: SearchQuery): PropertyListing[] {
     if (query.state && l.state.toLowerCase() !== query.state.toLowerCase()) return false;
     if (query.zip && l.zip !== query.zip) return false;
     if (query.minBeds && (l.beds ?? 0) < query.minBeds) return false;
+    if (query.minBaths && (l.baths ?? 0) < query.minBaths) return false;
     if (query.minSqft && (l.sqft ?? 0) < query.minSqft) return false;
     if (query.maxPrice && (l.listPrice ?? 0) > query.maxPrice) return false;
-    if (query.address) {
+    if (query.address && !query.radius) {
       const hay = `${l.address} ${l.city} ${l.state} ${l.zip}`.toLowerCase();
       if (!hay.includes(query.address.toLowerCase())) return false;
     }
@@ -138,7 +213,7 @@ export async function lookupByAddress(address: string): Promise<{
   const seed = SEED_LISTINGS.find((l) =>
     `${l.address}, ${l.city}, ${l.state} ${l.zip}`.toLowerCase().includes(address.toLowerCase())
   );
-  if (hasRentCastKey()) {
+  if (hasLiveSearch()) {
     try {
       const data = (await rentcast(`/properties?address=${encodeURIComponent(address)}`)) as RentCastListing[];
       const first = Array.isArray(data) ? data[0] : undefined;
@@ -161,7 +236,7 @@ export async function lookupByAddress(address: string): Promise<{
     return {
       listing: seed,
       source: "seed",
-      notice: hasRentCastKey() ? undefined : "Seed listing (add RENTCAST_API_KEY for live lookup).",
+      notice: hasLiveSearch() ? undefined : "Seed listing (add RENTCAST_API_KEY for live lookup).",
     };
   }
   return null;

@@ -1,29 +1,37 @@
 "use client";
 
 import { useRef, useState } from "react";
+import type { UserMatrix } from "@/lib/types";
 
 export type GradePayload = {
   results?: unknown[];
   notice?: string;
   source?: string;
   error?: string;
+  signupUrl?: string;
 };
 
 export function RedfinUpload({
-  heading = "Grade a Redfin CSV",
+  heading = "Listings",
   compact,
+  matrix,
+  liveSearch,
+  signupUrl,
   onGraded,
 }: {
   heading?: string;
   compact?: boolean;
+  matrix: UserMatrix;
+  liveSearch?: boolean;
+  signupUrl?: string;
   onGraded?: (data: GradePayload) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("");
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"live" | "csv" | "sample" | "">("");
 
-  async function grade(body: Record<string, unknown>) {
-    setPending(true);
+  async function grade(body: Record<string, unknown>, kind: "live" | "csv" | "sample") {
+    setPending(kind);
     setStatus("");
     try {
       const res = await fetch("/api/search", {
@@ -33,22 +41,22 @@ export function RedfinUpload({
       });
       const data = (await res.json()) as GradePayload;
       if (!res.ok) {
-        setStatus(data.error ?? "Could not grade that file.");
+        setStatus(data.error ?? "Could not load listings.");
         return;
       }
       setStatus(data.notice ?? "Graded.");
       onGraded?.(data);
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Upload failed");
+      setStatus(err instanceof Error ? err.message : "Request failed");
     } finally {
-      setPending(false);
+      setPending("");
     }
   }
 
   async function onFile(file: File | undefined) {
     if (!file) return;
     const csv = await file.text();
-    await grade({ csv, source: "upload" });
+    await grade({ csv, source: "upload", draft: matrix }, "csv");
   }
 
   return (
@@ -61,16 +69,24 @@ export function RedfinUpload({
         <button
           type="button"
           className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm text-white disabled:opacity-50"
-          disabled={pending}
-          onClick={() => input.current?.click()}
+          disabled={Boolean(pending)}
+          onClick={() => void grade({ source: "live", draft: matrix }, "live")}
         >
-          {pending ? "Grading…" : "Upload CSV"}
+          {pending === "live" ? "Pulling…" : "Pull live listings"}
         </button>
         <button
           type="button"
           className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
-          disabled={pending}
-          onClick={() => void grade({ source: "favorites" })}
+          disabled={Boolean(pending)}
+          onClick={() => input.current?.click()}
+        >
+          {pending === "csv" ? "Grading…" : "Upload CSV"}
+        </button>
+        <button
+          type="button"
+          className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+          disabled={Boolean(pending)}
+          onClick={() => void grade({ source: "favorites", draft: matrix }, "sample")}
         >
           Sample list
         </button>
@@ -82,7 +98,22 @@ export function RedfinUpload({
           onChange={(e) => void onFile(e.target.files?.[0])}
         />
       </div>
-      {status ? <p className="mt-2 text-xs text-[var(--muted)]">{status}</p> : null}
+      <p className="mt-2 text-xs text-[var(--muted)]">
+        {liveSearch ? (
+          "Live pull uses your chat baseline (area, beds, baths, type). One search returns up to 50 actives, then we rank them."
+        ) : signupUrl ? (
+          <>
+            Fastest live path: free RentCast key (50 pulls/month) from{" "}
+            <a href={signupUrl} target="_blank" rel="noreferrer" className="underline">
+              rentcast.io/api
+            </a>
+            , then set <code>RENTCAST_API_KEY</code>. Or upload a Redfin Favorites CSV.
+          </>
+        ) : (
+          "Upload a Redfin Favorites CSV, or add RENTCAST_API_KEY for live search."
+        )}
+      </p>
+      {status ? <p className="mt-1 text-xs text-[var(--muted)]">{status}</p> : null}
     </section>
   );
 }

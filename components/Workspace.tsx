@@ -7,7 +7,7 @@ import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
 import { RedfinUpload } from "@/components/RedfinUpload";
 import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
-import { defaultMatrix } from "@/kb/catalog";
+import { baselineStatus, defaultMatrix } from "@/kb/catalog";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -24,23 +24,45 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [view, setView] = useState<View>("split");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showLevers, setShowLevers] = useState(true);
+  const [liveSearch, setLiveSearch] = useState(false);
+  const [signupUrl, setSignupUrl] = useState("https://www.rentcast.io/api");
 
-  const applyGrade = useCallback((data: { results?: Row[]; notice?: string }) => {
-    setRows(data.results ?? []);
-    setNotice(data.notice ?? "");
-    if (data.results?.[0]) setSelectedId(data.results[0].listing.id);
+  const applyGrade = useCallback((data: { results?: Row[]; notice?: string; error?: string }) => {
+    if (data.results) {
+      setRows(data.results);
+      if (data.results[0]) setSelectedId(data.results[0].listing.id);
+    }
+    setNotice(data.notice ?? data.error ?? "");
   }, []);
 
-  async function refreshGrades() {
+  async function refreshGrades(m?: UserMatrix) {
     const res = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ draft: m ?? matrix }),
     });
     applyGrade(await res.json());
   }
 
+  async function pullLive(m: UserMatrix) {
+    const res = await fetch("/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "live", draft: m }),
+    });
+    const data = await res.json();
+    applyGrade(data);
+    return data;
+  }
+
   useEffect(() => {
+    void fetch("/api/search")
+      .then((r) => r.json())
+      .then((data: { liveSearch?: boolean; signupUrl?: string }) => {
+        setLiveSearch(Boolean(data.liveSearch));
+        if (data.signupUrl) setSignupUrl(data.signupUrl);
+      })
+      .catch(() => undefined);
     void refreshGrades();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -52,12 +74,18 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           matrix={matrix}
           onMatrix={(m, committed) => {
             setMatrix(m);
-            if (committed) void refreshGrades();
+            if (committed) {
+              if (liveSearch && baselineStatus(m).complete) void pullLive(m);
+              else void refreshGrades(m);
+            }
           }}
         />
         <RedfinUpload
           compact
-          heading="CSV"
+          heading="Listings"
+          matrix={matrix}
+          liveSearch={liveSearch}
+          signupUrl={signupUrl}
           onGraded={(data) => applyGrade(data as { results?: Row[]; notice?: string })}
         />
         <details
@@ -115,7 +143,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
               </div>
             ))}
             {rows.length === 0 ? (
-              <p className="text-sm text-[var(--muted)]">Upload a Redfin CSV or use the sample list to see grades here.</p>
+              <p className="text-sm text-[var(--muted)]">
+                Set area, beds, baths, and type in chat, then Pull live listings — or upload a Redfin CSV.
+              </p>
             ) : null}
           </div>
         </div>
