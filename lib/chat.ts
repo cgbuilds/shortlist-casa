@@ -247,7 +247,12 @@ function heuristicChat(matrix: UserMatrix, userText: string) {
     });
     working = applied.matrix;
     notes.push("Prefer townhouse.");
-  } else if (text.includes("single family") || text.includes("sfr") || /\bhouse\b/.test(text)) {
+  } else if (
+    text.includes("single family") ||
+    text.includes("single-family") ||
+    text.includes("sfr") ||
+    /\bhouse\b/.test(text)
+  ) {
     const applied = applyTool(working, "set_dimension", {
       id: "property_type",
       enabled: true,
