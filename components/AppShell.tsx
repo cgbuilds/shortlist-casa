@@ -34,7 +34,7 @@ export function AppShell({
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
       <footer className="mx-auto max-w-6xl px-4 pb-10 text-xs leading-relaxed text-[var(--muted)]">
         Not MLS. Scores are estimates from your matrix and available facts, not an appraisal or financial
-        advice. Listing photos and live inventory live on Zillow, Redfin, and Realtor.com — we only link out.
+        advice. Listing photos and live inventory live on Zillow and Redfin — we only link out.
       </footer>
     </div>
   );
