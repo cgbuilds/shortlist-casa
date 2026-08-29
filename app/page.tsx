@@ -9,7 +9,7 @@ export default async function HomePage() {
   return (
     <div className="mx-auto grid min-h-screen max-w-5xl items-center gap-12 px-4 py-16 lg:grid-cols-2">
       <div>
-        <p className="text-sm uppercase tracking-[0.2em] text-[var(--muted)]">Family home search</p>
+        <p className="text-sm uppercase tracking-[0.2em] text-[var(--muted)]">Homestead Matrix</p>
         <h1 className="mt-3 font-[family-name:var(--font-display)] text-5xl leading-tight">
           Grade listings against a matrix you built in chat.
         </h1>
