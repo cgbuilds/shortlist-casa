@@ -1,4 +1,6 @@
 import { CATALOG, CATALOG_VERSION, defaultMatrix, catalogById, isLegacyAllowlist, baselineStatus } from "@/kb/catalog";
+import { adviseLiveSearch } from "@/lib/listing-cache";
+import { queryFromMatrix } from "@/lib/rentcast";
 import type { DimensionKnobs, ManualRubric, UnknownPolicy, UserMatrix } from "@/lib/types";
 
 const ALLOWED_KNOB_KEYS = new Set([
@@ -199,13 +201,41 @@ export const CHAT_TOOLS = [
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "preview_live_search",
+      description:
+        "Advise on the beta live-search quota (3 per user). Call when they ask to search, re-search, or how many pulls are left. Explains overlap with the cache and workarounds so they may not need to spend a pull. Does not spend a search.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "run_live_search",
+      description:
+        "Spend one of the three live searches only after the user confirms. Set confirm true when they say confirm live pull / use one of the remaining searches. If confirm is false, only return advice.",
+      parameters: {
+        type: "object",
+        properties: {
+          confirm: {
+            type: "boolean",
+            description: "True only after the user explicitly agrees to spend 1 live search.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 export function applyTool(
   matrix: UserMatrix,
   name: string,
-  args: Record<string, unknown>
-): { matrix: UserMatrix; result: unknown; commit?: boolean } {
+  args: Record<string, unknown>,
+  ctx?: { userId?: string }
+): { matrix: UserMatrix; result: unknown; commit?: boolean; livePull?: boolean; liveSearch?: boolean } {
   switch (name) {
     case "list_catalog":
       return {
@@ -258,6 +288,24 @@ export function applyTool(
         };
       }
       return { matrix, result: { ok: true, committed: true }, commit: true };
+    }
+    case "preview_live_search":
+    case "run_live_search": {
+      if (!ctx?.userId) {
+        return { matrix, result: { error: "Live search advice needs a signed-in user." } };
+      }
+      const advice = adviseLiveSearch(ctx.userId, queryFromMatrix(matrix));
+      const confirm = Boolean(args.confirm);
+      if (name === "preview_live_search" || !confirm) {
+        return { matrix, result: advice };
+      }
+      if (advice.recommendation === "quota") {
+        return { matrix, result: advice };
+      }
+      if (advice.recommendation === "regrade") {
+        return { matrix, result: { ...advice, spent: false }, liveSearch: true };
+      }
+      return { matrix, result: { ...advice, spent: true }, livePull: true };
     }
     default:
       return { matrix, result: { error: `Unknown tool ${name}` } };

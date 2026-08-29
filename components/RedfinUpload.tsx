@@ -12,6 +12,8 @@ export type GradePayload = {
   quota?: { remaining: number; userLimit: number; globalRemaining?: number };
   fromCache?: boolean;
   pulled?: boolean;
+  needsConfirm?: boolean;
+  advice?: { advice?: string; coveragePct?: number | null; used?: number; userLimit?: number };
 };
 
 export function RedfinUpload({
@@ -69,8 +71,9 @@ export function RedfinUpload({
     await grade({ csv, source: "upload", draft: matrix }, "csv");
   }
 
-  const pullsLeft = remaining ?? userLimit ?? 50;
-  const limit = userLimit ?? 50;
+  const pullsLeft = remaining ?? userLimit ?? 3;
+  const limit = userLimit ?? 3;
+  const used = Math.max(0, limit - pullsLeft);
 
   return (
     <section
@@ -91,10 +94,10 @@ export function RedfinUpload({
           type="button"
           className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
           disabled={Boolean(pending) || pullsLeft <= 0}
-          title="Uses one RentCast pull even if a cache exists"
+          title="Spends 1 of 3 live searches. Cache never resets unless you confirm this or widen area/type/budget."
           onClick={() => void grade({ source: "live", draft: matrix, force: true }, "refresh")}
         >
-          {pending === "refresh" ? "Refreshing…" : "Refresh live"}
+          {pending === "refresh" ? "Pulling…" : `Use 1 live search (${used}/${limit})`}
         </button>
         <button
           type="button"
@@ -123,9 +126,9 @@ export function RedfinUpload({
       <p className="mt-2 text-xs text-[var(--muted)]">
         {liveSearch ? (
           <>
-            Search & grade uses a cached pull when the area/type/budget still fit ({cacheCount ?? 0} homes,
-            12h). Changing coffee, vibe, or drainage only re-grades — no pull. {pullsLeft}/{limit} pulls left
-            this month. Refresh live spends one pull.
+            Live searches {used}/{limit} used · {pullsLeft} left. Cache stays until you confirm another pull or
+            widen area/type/beds/price ({cacheCount ?? 0} cached). Search & grade re-grades for free when it
+            still fits. Coffee, vibe, and drainage never spend a pull. Ask chat before using another search.
           </>
         ) : signupUrl ? (
           <>

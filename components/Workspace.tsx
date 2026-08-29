@@ -27,7 +27,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [liveSearch, setLiveSearch] = useState(false);
   const [signupUrl, setSignupUrl] = useState("https://www.rentcast.io/api");
   const [remaining, setRemaining] = useState<number | undefined>(undefined);
-  const [userLimit, setUserLimit] = useState(50);
+  const [userLimit, setUserLimit] = useState(3);
   const [cacheCount, setCacheCount] = useState(0);
   const skipMatrixGrade = useRef(true);
 
@@ -49,6 +49,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ draft: m ?? matrix }),
+    });
+    applyGrade(await res.json());
+  }
+
+  async function runLive(m: UserMatrix, force: boolean) {
+    const res = await fetch("/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "live", draft: m, force }),
     });
     applyGrade(await res.json());
   }
@@ -85,8 +94,12 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       <aside className="flex h-[42vh] min-h-0 w-full shrink-0 flex-col border-[var(--line)] lg:h-auto lg:w-[22rem] lg:border-r xl:w-[26rem]">
         <ChatPanel
           matrix={matrix}
-          onMatrix={(m) => {
+          remaining={remaining}
+          userLimit={userLimit}
+          onMatrix={(m, _commit, extra) => {
             setMatrix(m);
+            if (extra?.livePull) void runLive(m, true);
+            else if (extra?.liveSearch) void runLive(m, false);
           }}
         />
         <RedfinUpload

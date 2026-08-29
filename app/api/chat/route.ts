@@ -24,13 +24,15 @@ export async function POST(request: Request) {
 
   const saved = await loadActiveMatrix(user);
   const draft = ensureMatrix(body.draft ?? saved);
-  const result = await runMatrixChat(draft, body.messages ?? [], text);
+  const result = await runMatrixChat(draft, body.messages ?? [], text, { userId: user.id });
   if (result.commit) await saveActiveMatrix(user, result.matrix);
 
   return NextResponse.json({
     reply: result.reply,
     matrix: result.matrix,
     commit: result.commit,
+    livePull: result.livePull,
+    liveSearch: result.liveSearch,
     usedModel: result.usedModel,
     provider: result.provider,
     model: result.model,

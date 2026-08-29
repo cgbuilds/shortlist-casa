@@ -1,7 +1,7 @@
 import type { PropertyListing } from "@/lib/types";
 import type { SearchQuery } from "@/lib/rentcast";
 
-export const LIVE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+export const LIVE_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
 
 export type LiveQuota = {
   used: number;
@@ -73,7 +73,7 @@ export function canReusePull(cached: SearchQuery, next: SearchQuery) {
 
 export function quotaLimits() {
   const globalLimit = Math.max(1, Number(process.env.RENTCAST_MONTHLY_LIMIT || 50));
-  const userLimit = Math.max(1, Number(process.env.RENTCAST_USER_MONTHLY_LIMIT || globalLimit));
+  const userLimit = Math.max(1, Number(process.env.RENTCAST_USER_MONTHLY_LIMIT || 3));
   return { globalLimit, userLimit };
 }
 
@@ -109,14 +109,14 @@ function consumeQuota(userId: string) {
 export function getLiveCache(userId: string): LiveCacheSnapshot | null {
   const row = pulls.get(userId);
   if (!row) return null;
-  const expiresAt = row.fetchedAt + LIVE_CACHE_TTL_MS;
+  const expiresAt = row.fetchedAt;
   return {
     queryKey: row.queryKey,
     query: row.query,
     count: row.listings.length,
     fetchedAt: row.fetchedAt,
     expiresAt,
-    stale: Date.now() > expiresAt,
+    stale: false,
   };
 }
 
@@ -179,21 +179,146 @@ export async function withUserQueue<T>(userId: string, fn: () => Promise<T>): Pr
   }
 }
 
+export function liveWorkarounds(cached: SearchQuery, next: SearchQuery): string[] {
+  const tips: string[] = [];
+  if ((cached.minBeds ?? 0) > (next.minBeds ?? 0)) {
+    tips.push(`Keep min beds at ${cached.minBeds}+ instead of ${next.minBeds}+`);
+  }
+  if ((cached.minBaths ?? 0) > (next.minBaths ?? 0)) {
+    tips.push(`Keep min baths at ${cached.minBaths}+ instead of ${next.minBaths}+`);
+  }
+  if ((cached.minSqft ?? 0) > (next.minSqft ?? 0)) {
+    tips.push(`Keep min sqft at ${cached.minSqft}+`);
+  }
+  if (cached.maxPrice != null && (next.maxPrice == null || next.maxPrice > cached.maxPrice)) {
+    tips.push(`Keep max price at $${cached.maxPrice.toLocaleString()} or less`);
+  }
+  const cachedPlace = cached.address || cached.city || "";
+  const nextPlace = next.address || next.city || "";
+  if (cachedPlace && nextPlace && cachedPlace !== nextPlace) {
+    tips.push(`Stay in ${cachedPlace} instead of switching to ${nextPlace}`);
+  }
+  if ((cached.propertyType ?? "") !== (next.propertyType ?? "")) {
+    tips.push(`Stay on ${cached.propertyType || "the current property type"}`);
+  }
+  return tips;
+}
+
+export type LiveAdvice = {
+  recommendation: "first-pull" | "regrade" | "confirm-pull" | "quota";
+  canReuse: boolean;
+  needsPull: boolean;
+  coveragePct: number | null;
+  matchCount: number;
+  cacheCount: number;
+  used: number;
+  remaining: number;
+  userLimit: number;
+  workarounds: string[];
+  advice: string;
+};
+
+export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice {
+  const quota = getLiveQuota(userId);
+  const cached = pulls.get(userId);
+  const counter = `${quota.used}/${quota.userLimit} live searches used`;
+  if (!cached) {
+    if (quota.remaining <= 0) {
+      return {
+        recommendation: "quota",
+        canReuse: false,
+        needsPull: true,
+        coveragePct: null,
+        matchCount: 0,
+        cacheCount: 0,
+        used: quota.used,
+        remaining: quota.remaining,
+        userLimit: quota.userLimit,
+        workarounds: [],
+        advice: `No cached listings, and you are at the beta cap (${counter}). Upload a Redfin CSV or wait for next month.`,
+      };
+    }
+    return {
+      recommendation: "first-pull",
+      canReuse: false,
+      needsPull: true,
+      coveragePct: null,
+      matchCount: 0,
+      cacheCount: 0,
+      used: quota.used,
+      remaining: quota.remaining,
+      userLimit: quota.userLimit,
+      workarounds: [],
+      advice: `First live search uses 1 of ${quota.userLimit}. After that, changing coffee, vibe, or tighter beds/price re-grades the cache for free. ${counter}; ${quota.remaining} left.`,
+    };
+  }
+  const matches = filterListingsByQuery(cached.listings, query);
+  const coveragePct = cached.listings.length
+    ? Math.round((100 * matches.length) / cached.listings.length)
+    : 0;
+  const canReuse = canReusePull(cached.query, query);
+  const workarounds = liveWorkarounds(cached.query, query);
+  if (canReuse) {
+    return {
+      recommendation: "regrade",
+      canReuse: true,
+      needsPull: false,
+      coveragePct,
+      matchCount: matches.length,
+      cacheCount: cached.listings.length,
+      used: quota.used,
+      remaining: quota.remaining,
+      userLimit: quota.userLimit,
+      workarounds: [],
+      advice: `${coveragePct}% of your cached list (${matches.length}/${cached.listings.length}) still matches. Re-grade for free — do not spend a live search. ${counter}; ${quota.remaining} left.`,
+    };
+  }
+  if (quota.remaining <= 0) {
+    return {
+      recommendation: "quota",
+      canReuse: false,
+      needsPull: true,
+      coveragePct,
+      matchCount: matches.length,
+      cacheCount: cached.listings.length,
+      used: quota.used,
+      remaining: quota.remaining,
+      userLimit: quota.userLimit,
+      workarounds,
+      advice: `Beta cap reached (${counter}). ${coveragePct}% of the cached homes still fit. ${workarounds.join(" · ") || "Re-grade the cache."} A new pull is not available.`,
+    };
+  }
+  return {
+    recommendation: "confirm-pull",
+    canReuse: false,
+    needsPull: true,
+    coveragePct,
+    matchCount: matches.length,
+    cacheCount: cached.listings.length,
+    used: quota.used,
+    remaining: quota.remaining,
+    userLimit: quota.userLimit,
+    workarounds,
+    advice: `${coveragePct}% of the cached homes still match this new search (${matches.length}/${cached.listings.length}). Workaround: ${workarounds.join("; ") || "keep the current area/type/floors"}. If you still want a new batch, say "confirm live pull" to use 1 of ${quota.remaining} remaining (${counter}).`,
+  };
+}
+
 export function decideLivePull(
   userId: string,
   query: SearchQuery,
   force: boolean
-): { action: "cache" | "fetch" | "stale" | "quota"; cached?: CachedPull; quota: LiveQuota } {
+): { action: "cache" | "fetch" | "confirm" | "quota"; cached?: CachedPull; quota: LiveQuota } {
   const quota = getLiveQuota(userId);
   const cached = pulls.get(userId);
-  const fresh = cached && Date.now() - cached.fetchedAt <= LIVE_CACHE_TTL_MS;
-  const reusable = cached && canReusePull(cached.query, query);
-  if (!force && reusable && fresh) return { action: "cache", cached, quota };
+  const reusable = Boolean(cached && canReusePull(cached.query, query));
+  if (cached && reusable && !force) return { action: "cache", cached, quota };
   if (quota.remaining <= 0 || quota.globalRemaining <= 0) {
-    if (reusable && cached) return { action: "stale", cached, quota };
+    if (cached) return { action: "cache", cached, quota };
     return { action: "quota", quota };
   }
-  return { action: "fetch", quota };
+  if (!cached) return { action: "fetch", quota };
+  if (force) return { action: "fetch", quota };
+  return { action: "confirm", cached, quota };
 }
 
 export function markFetched(userId: string, query: SearchQuery, listings: PropertyListing[]): LiveQuota {
@@ -212,13 +337,13 @@ export function livePullNotice(result: {
   searchArea?: string;
 }) {
   const left = Math.min(result.quota.remaining, result.quota.globalRemaining);
-  const pulls = `${left}/${result.quota.userLimit} pulls left this month`;
+  const pulls = `${result.quota.used}/${result.quota.userLimit} used · ${left} live search${left === 1 ? "" : "es"} left`;
   if (result.pulled) {
-    return `Pulled ${result.count} live listings${result.searchArea ? ` around ${result.searchArea}` : ""}. ${pulls}. Re-grade is free until area, type, or budget widens.`;
+    return `Pulled ${result.count} live listings${result.searchArea ? ` around ${result.searchArea}` : ""}. ${pulls}. Cache stays until you confirm another pull or the area/type/budget widens.`;
   }
   if (result.fromCache) {
     const age = result.fetchedAt ? formatAge(result.fetchedAt) : "earlier";
-    return `Re-graded ${result.count} cached listings (${age}${result.stale ? ", stale" : ""}). ${pulls}.`;
+    return `Re-graded ${result.count} cached listings (${age}). ${pulls}.`;
   }
   return pulls;
 }

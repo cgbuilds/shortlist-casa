@@ -9,7 +9,7 @@ import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
 import { queryFromMatrix } from "../lib/rentcast";
 import { inferVibe } from "../lib/osm-amenities";
-import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull } from "../lib/listing-cache";
+import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota } from "../lib/listing-cache";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -85,6 +85,10 @@ async function main() {
   assert(valricoQ.city === "Valrico", "named city is a tight search");
   assert(valricoQ.radius == null, "no metro radius when a city is named");
 
+  process.env.RENTCAST_USER_MONTHLY_LIMIT = "3";
+  assert(quotaLimits().userLimit === 3, "beta default is 3 live searches");
+  assert(getLiveQuota("fresh-quota-user").remaining === 3, "new user has 3 remaining");
+
   const wide = { address: "Tampa, FL", radius: 22, state: "FL", minBeds: 2, maxPrice: 600000, propertyType: "Single Family" };
   const tight = { ...wide, minBeds: 3, maxPrice: 400000 };
   assert(liveQueryKey(wide) !== liveQueryKey(tight), "query keys differ when floors change");
@@ -94,7 +98,24 @@ async function main() {
   const cachedHit = decideLivePull("cache-user", tight, false);
   assert(cachedHit.action === "cache", "fresh cache is reused on Search & grade");
   const forced = decideLivePull("cache-user", tight, true);
-  assert(forced.action === "fetch", "Refresh live ignores cache when quota remains");
+  assert(forced.action === "fetch", "confirmed extra pull ignores cache when quota remains");
+  const widenNeed = decideLivePull("cache-user", { ...wide, address: "Orlando, FL" }, false);
+  assert(widenNeed.action === "confirm", "widening area waits for the user to spend 1 of 3");
+
+  const twoBed = { ...sample, id: "two-bed", beds: 2, listPrice: 350000 };
+  const threeBed = { ...sample, id: "three-bed", beds: 3, listPrice: 350000 };
+  rememberLivePull("cov-user", wide, [twoBed, threeBed]);
+  const overlap = adviseLiveSearch("cov-user", tight);
+  assert(overlap.recommendation === "regrade", "tighter search re-grades cache");
+  assert(overlap.coveragePct === 50, `coverage should be 50, got ${overlap.coveragePct}`);
+  const newArea = adviseLiveSearch("cache-user", { ...wide, address: "Orlando, FL" });
+  assert(newArea.recommendation === "confirm-pull", "new area needs a confirmed pull");
+  assert(newArea.advice.includes("cached"), "advice mentions cache overlap");
+
+  const preview = applyTool(liveMx, "preview_live_search", {}, { userId: "chat-live-user" });
+  assert((preview.result as { recommendation: string }).recommendation === "first-pull", "first pull advice");
+  const confirmed = applyTool(liveMx, "run_live_search", { confirm: true }, { userId: "chat-live-user" });
+  assert(confirmed.livePull, "explicit confirm spends a pull when there is no cache");
 
   assert(inferVibe(2, 8) === "local_center", "shops + café = local center");
   assert(inferVibe(0, 1) === "sleepy", "few shops = sleepy");

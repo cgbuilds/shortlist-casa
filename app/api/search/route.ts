@@ -11,6 +11,7 @@ import {
   searchListings,
 } from "@/lib/rentcast";
 import {
+  adviseLiveSearch,
   decideLivePull,
   filterListingsByQuery,
   getLiveCache,
@@ -130,16 +131,17 @@ export async function POST(request: Request) {
       if (decision.action === "quota") {
         return NextResponse.json(
           {
-            error: `Monthly RentCast limit reached (${decision.quota.used}/${decision.quota.userLimit} for you, ${decision.quota.globalUsed}/${decision.quota.globalLimit} on the key). Re-grade your cached list, or wait until next month.`,
+            error: `Beta live-search cap reached (${decision.quota.used}/${decision.quota.userLimit}). Re-grade the cache or wait until next month.`,
             quota: decision.quota,
             cache: getLiveCache(user.id),
+            advice: adviseLiveSearch(user.id, query),
           },
           { status: 429 }
         );
       }
       let listings = decision.cached?.listings ?? [];
       let pulled = false;
-      let fromCache = decision.action === "cache" || decision.action === "stale";
+      let fromCache = decision.action === "cache" || decision.action === "confirm";
       let quota = decision.quota;
       if (decision.action === "fetch") {
         const result = await searchListings(query);
@@ -150,6 +152,7 @@ export async function POST(request: Request) {
             results: [],
             quota,
             cache: getLiveCache(user.id),
+            advice: adviseLiveSearch(user.id, query),
           });
         }
         listings = result.listings;
@@ -163,15 +166,19 @@ export async function POST(request: Request) {
       await saveSearch(user, { source: "live", query, fromCache, pulled }, ranked.map((r) => r.listing.id));
       for (const row of ranked) await saveGrade(user, row.listing, row.grade);
       const top = ranked.filter((r) => !r.grade.mustHaveFailed);
-      const notice = `${livePullNotice({
-        fromCache,
-        stale: decision.action === "stale",
-        pulled,
-        count: ranked.length,
-        fetchedAt: decision.cached?.fetchedAt ?? Date.now(),
-        quota,
-        searchArea: matrix.searchArea,
-      })} ${top.length} pass must-haves.`;
+      const advice = adviseLiveSearch(user.id, query);
+      const notice =
+        decision.action === "confirm"
+          ? `${advice.advice} Showing the ${ranked.length} cached homes that still fit.`
+          : `${livePullNotice({
+              fromCache,
+              stale: false,
+              pulled,
+              count: ranked.length,
+              fetchedAt: decision.cached?.fetchedAt ?? Date.now(),
+              quota,
+              searchArea: matrix.searchArea,
+            })} ${top.length} pass must-haves.`;
       return NextResponse.json({
         source: pulled ? "rentcast" : "cache",
         notice,
@@ -180,6 +187,8 @@ export async function POST(request: Request) {
         cache: getLiveCache(user.id),
         fromCache,
         pulled,
+        needsConfirm: decision.action === "confirm",
+        advice,
       });
     });
   }

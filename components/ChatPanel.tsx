@@ -10,9 +10,13 @@ type ProviderInfo = { provider: string; model: string; label: string };
 export function ChatPanel({
   matrix,
   onMatrix,
+  remaining,
+  userLimit = 3,
 }: {
   matrix: UserMatrix;
-  onMatrix: (m: UserMatrix, committed: boolean) => void;
+  onMatrix: (m: UserMatrix, committed: boolean, extra?: { livePull?: boolean; liveSearch?: boolean }) => void;
+  remaining?: number;
+  userLimit?: number;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -87,7 +91,12 @@ export function ChatPanel({
           : `Reply from ${data.label ?? provider.label}${seconds ? ` in ${seconds}s` : ""} · ${tools}`
       );
       setMessages([...history, { role: "assistant", content: data.reply ?? "Updated." }]);
-      if (data.matrix) onMatrix(data.matrix, Boolean(data.commit));
+      if (data.matrix) {
+        onMatrix(data.matrix, Boolean(data.commit), {
+          livePull: Boolean(data.livePull),
+          liveSearch: Boolean(data.liveSearch),
+        });
+      }
       if (data.commit) setCommitted(true);
     } catch (err) {
       setLastMeta(`Request failed: ${err instanceof Error ? err.message : "network error"}`);
@@ -101,6 +110,18 @@ export function ChatPanel({
       <div className="border-b border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
         Chat provider: <span className="text-[var(--ink)]">{provider.label}</span>
         {provider.model ? ` · ${provider.model}` : ""}
+        {remaining != null ? (
+          <>
+            {" "}
+            · Live searches{" "}
+            <span className="text-[var(--ink)]">
+              {Math.max(0, userLimit - remaining)}/{userLimit}
+            </span>{" "}
+            used · {remaining} left
+          </>
+        ) : (
+          <> · Beta: {userLimit} live searches per user</>
+        )}
       </div>
       <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.map((m, i) => (
@@ -133,7 +154,7 @@ export function ChatPanel({
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Tampa, FL · 3 bed · 2 bath · single-family. Then garage, W/D, walkable…"
+          placeholder="Tampa, FL · 3 bed · 2 bath · SFR. Ask in chat to search live or confirm another pull…"
           rows={3}
           className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm"
         />

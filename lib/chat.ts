@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import { baselineStatus } from "@/kb/catalog";
+import { adviseLiveSearch } from "@/lib/listing-cache";
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
+import { queryFromMatrix } from "@/lib/rentcast";
 import type { UserMatrix } from "@/lib/types";
 
 export const SYSTEM_PROMPT = `You are a home-buy rating-matrix coach. Users will grade a Redfin favorites CSV against a matrix you build with tools.
@@ -27,7 +29,9 @@ If they dump everything in one message, apply baseline first, then add-ons.
 Do not keep Valrico, Brandon, Bloomingdale, or River Hills unless the user said those places.
 Format replies as markdown with **bold** labels and dash lists.
 Keep replies short. After tools, recap what is set and what baseline is still missing.
-When baseline is complete AND the user confirms, call commit_matrix.`;
+When baseline is complete AND the user confirms, call commit_matrix.
+
+LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user. The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-grades the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.`;
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -89,6 +93,8 @@ export type ChatResult = {
   reply: string;
   matrix: UserMatrix;
   commit: boolean;
+  livePull?: boolean;
+  liveSearch?: boolean;
   usedModel: boolean;
   provider: string;
   model?: string;
@@ -100,13 +106,15 @@ export type ChatResult = {
 export async function runMatrixChat(
   matrix: UserMatrix,
   history: ChatMessage[],
-  userText: string
+  userText: string,
+  opts?: { userId?: string }
 ): Promise<ChatResult> {
   const started = Date.now();
   const info = chatProviderInfo();
+  const liveAdvice = opts?.userId ? adviseLiveSearch(opts.userId, queryFromMatrix(matrix)) : null;
   const llm = getLlmClient();
   if (!llm) {
-    const fallback = heuristicChat(matrix, userText);
+    const fallback = heuristicChat(matrix, userText, history, opts?.userId);
     return {
       ...fallback,
       provider: "heuristic",
@@ -123,12 +131,22 @@ export async function runMatrixChat(
       role: "system",
       content: `Current matrix preview: ${JSON.stringify(previewMatrix(matrix))}`,
     },
+    ...(liveAdvice
+      ? [
+          {
+            role: "system" as const,
+            content: `Live search quota (do not skip): ${JSON.stringify(liveAdvice)}`,
+          },
+        ]
+      : []),
     ...history.slice(-12).map((m) => ({ role: m.role, content: m.content }) as const),
     { role: "user", content: userText },
   ];
 
   let working = matrix;
   let commit = false;
+  let livePull = false;
+  let liveSearch = false;
   let guard = 0;
   let toolRounds = 0;
 
@@ -149,9 +167,11 @@ export async function runMatrixChat(
         for (const call of msg.tool_calls) {
           if (call.type !== "function") continue;
           const args = safeJson(call.function.arguments);
-          const applied = applyTool(working, call.function.name, args);
+          const applied = applyTool(working, call.function.name, args, { userId: opts?.userId });
           working = applied.matrix;
           if (applied.commit) commit = true;
+          if (applied.livePull) livePull = true;
+          if (applied.liveSearch) liveSearch = true;
           messages.push({
             role: "tool",
             tool_call_id: call.id,
@@ -164,6 +184,8 @@ export async function runMatrixChat(
         reply: msg.content || "Updated.",
         matrix: working,
         commit,
+        livePull,
+        liveSearch,
         usedModel: true,
         provider: llm.provider,
         model: llm.model,
@@ -176,6 +198,8 @@ export async function runMatrixChat(
       reply: "I updated your matrix draft.",
       matrix: working,
       commit,
+      livePull,
+      liveSearch,
       usedModel: true,
       provider: llm.provider,
       model: llm.model,
@@ -184,7 +208,7 @@ export async function runMatrixChat(
       elapsedMs: Date.now() - started,
     };
   } catch (err) {
-    const fallback = heuristicChat(matrix, userText);
+    const fallback = heuristicChat(matrix, userText, history, opts?.userId);
     const detail = err instanceof Error ? err.message : "LLM error";
     return {
       ...fallback,
@@ -206,11 +230,26 @@ function safeJson(raw: string): Record<string, unknown> {
   }
 }
 
-function heuristicChat(matrix: UserMatrix, userText: string) {
+function wantsLiveConfirm(text: string, history: ChatMessage[]) {
+  if (
+    /confirm( live)?( pull| search)|use (one|1)( of)?( my| the)?( remaining)?( live)?( search|pull)|spend (a |one )?(live )?(search|pull)|use another (live )?search|go ahead and (search|pull) live/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  const last = [...history].reverse().find((m) => m.role === "assistant")?.content ?? "";
+  const askedLive = /confirm live|live search|remaining|of 3|of three/i.test(last);
+  return askedLive && /^(yes|ok|okay|do it|please)\b/.test(text.trim());
+}
+
+function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessage[] = [], userId?: string) {
   const text = userText.toLowerCase();
   let working = matrix;
   const notes: string[] = [];
   let commit = false;
+  let livePull = false;
+  let liveSearch = false;
 
   const price =
     userText.match(/\$?\s*(\d{3,4})\s*k\b/i) ||
@@ -438,7 +477,41 @@ function heuristicChat(matrix: UserMatrix, userText: string) {
     notes.push("Updated PITIA / monthly slack targets.");
   }
 
-  if (text.includes("commit") || text.includes("save") || text.includes("looks good") || text.includes("done") || text === "yes") {
+  if (userId && wantsLiveConfirm(text, history)) {
+    const applied = applyTool(working, "run_live_search", { confirm: true }, { userId });
+    livePull = Boolean(applied.livePull);
+    liveSearch = Boolean(applied.liveSearch);
+    const advice = applied.result as { advice?: string };
+    notes.push(advice.advice ?? "Confirming a live search.");
+  } else if (
+    userId &&
+    /how many (live )?search|live (search )?quota|pulls left|preview.?live/.test(text)
+  ) {
+    const applied = applyTool(working, "preview_live_search", {}, { userId });
+    const advice = applied.result as { advice?: string };
+    notes.push(advice.advice ?? "Checking live-search quota.");
+  } else if (userId && /grade (the )?cache|re-?grade|search (&|and )grade/.test(text)) {
+    liveSearch = true;
+    const applied = applyTool(working, "preview_live_search", {}, { userId });
+    const advice = applied.result as { advice?: string };
+    notes.push(advice.advice ?? "Re-grading the cached list.");
+  } else if (
+    userId &&
+    /live search|search live|new (live )?search|another search|rentcast/.test(text)
+  ) {
+    const applied = applyTool(working, "preview_live_search", {}, { userId });
+    const advice = applied.result as { advice?: string };
+    notes.push(advice.advice ?? "Checking whether a new live search is needed.");
+  }
+
+  if (
+    !livePull &&
+    (text.includes("commit") ||
+      text.includes("save") ||
+      text.includes("looks good") ||
+      text.includes("done") ||
+      (text === "yes" && !wantsLiveConfirm(text, history)))
+  ) {
     const baseline = baselineStatus(working);
     if (!baseline.complete) {
       notes.push(
@@ -461,5 +534,5 @@ function heuristicChat(matrix: UserMatrix, userText: string) {
     );
   }
 
-  return { reply: notes.join(" "), matrix: working, commit, usedModel: false };
+  return { reply: notes.join(" "), matrix: working, commit, livePull, liveSearch, usedModel: false };
 }
