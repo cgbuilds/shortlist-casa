@@ -1,3 +1,4 @@
+import { tmpdir } from "os";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { defaultMatrix } from "../kb/catalog";
@@ -9,13 +10,20 @@ import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
 import { queryFromMatrix } from "../lib/rentcast";
 import { inferVibe } from "../lib/osm-amenities";
-import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota } from "../lib/listing-cache";
+import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP } from "../lib/listing-cache";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
 }
 
 async function main() {
+  process.env.RENTCAST_QUOTA_FILE = join(tmpdir(), `rentcast-quota-test-${Date.now()}.json`);
+  process.env.RENTCAST_MONTHLY_LIMIT = "999";
+  process.env.RENTCAST_USER_MONTHLY_LIMIT = "3";
+  resetLiveQuotaForTests();
+  assert(quotaLimits().globalLimit === RENTCAST_HARD_CAP, "account cap cannot exceed 50 even if env is higher");
+  assert(getLiveQuota("fresh-quota-user").remaining === 3, "new user has 3 remaining");
+
   const csv = readFileSync(join(process.cwd(), "data/redfin-favorites.csv"), "utf8");
   const favorites = parseRedfinCsv(csv);
   assert(favorites.length >= 35, `expected 35+ favorites, got ${favorites.length}`);
@@ -87,7 +95,6 @@ async function main() {
 
   process.env.RENTCAST_USER_MONTHLY_LIMIT = "3";
   assert(quotaLimits().userLimit === 3, "beta default is 3 live searches");
-  assert(getLiveQuota("fresh-quota-user").remaining === 3, "new user has 3 remaining");
 
   const wide = { address: "Tampa, FL", radius: 22, state: "FL", minBeds: 2, maxPrice: 600000, propertyType: "Single Family" };
   const tight = { ...wide, minBeds: 3, maxPrice: 400000 };
@@ -116,6 +123,17 @@ async function main() {
   assert((preview.result as { recommendation: string }).recommendation === "first-pull", "first pull advice");
   const confirmed = applyTool(liveMx, "run_live_search", { confirm: true }, { userId: "chat-live-user" });
   assert(confirmed.livePull, "explicit confirm spends a pull when there is no cache");
+
+  setLiveQuotaForTests({ globalUsed: RENTCAST_HARD_CAP });
+  assert(!reserveRentcastCall(), "51st RentCast HTTP call is refused");
+  assert(getLiveQuota("fresh-quota-user").globalRemaining === 0, "no account remaining at 50");
+  const atCap = decideLivePull("cache-user", tight, true);
+  assert(atCap.action !== "fetch", "never fetch live listings after the 50-call hard cap");
+  const capAdvice = adviseLiveSearch("no-cache-cap-user", wide);
+  assert(capAdvice.recommendation === "quota", "chat treats the 50-call cap as quota");
+  resetLiveQuotaForTests();
+  rememberLivePull("cache-user", wide, [sample]);
+  rememberLivePull("cov-user", wide, [twoBed, threeBed]);
 
   assert(inferVibe(2, 8) === "local_center", "shops + café = local center");
   assert(inferVibe(0, 1) === "sleepy", "few shops = sleepy");

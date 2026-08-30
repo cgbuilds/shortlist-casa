@@ -28,10 +28,19 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [signupUrl, setSignupUrl] = useState("https://www.rentcast.io/api");
   const [remaining, setRemaining] = useState<number | undefined>(undefined);
   const [userLimit, setUserLimit] = useState(3);
+  const [globalRemaining, setGlobalRemaining] = useState<number | undefined>(undefined);
+  const [globalUsed, setGlobalUsed] = useState<number | undefined>(undefined);
+  const [globalLimit, setGlobalLimit] = useState(50);
   const [cacheCount, setCacheCount] = useState(0);
   const skipMatrixGrade = useRef(true);
 
-  const applyGrade = useCallback((data: { results?: Row[]; notice?: string; error?: string; quota?: { remaining: number; userLimit: number }; cache?: { count: number } }) => {
+  const applyGrade = useCallback((data: {
+    results?: Row[];
+    notice?: string;
+    error?: string;
+    quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
+    cache?: { count: number };
+  }) => {
     if (data.results) {
       setRows(data.results);
       if (data.results[0]) setSelectedId(data.results[0].listing.id);
@@ -40,6 +49,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (data.quota) {
       setRemaining(data.quota.remaining);
       setUserLimit(data.quota.userLimit);
+      if (data.quota.globalRemaining != null) setGlobalRemaining(data.quota.globalRemaining);
+      if (data.quota.globalUsed != null) setGlobalUsed(data.quota.globalUsed);
+      if (data.quota.globalLimit != null) setGlobalLimit(data.quota.globalLimit);
     }
     if (data.cache?.count != null) setCacheCount(data.cache.count);
   }, []);
@@ -65,12 +77,20 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   useEffect(() => {
     void fetch("/api/search")
       .then((r) => r.json())
-      .then((data: { liveSearch?: boolean; signupUrl?: string; quota?: { remaining: number; userLimit: number }; cache?: { count: number } }) => {
+      .then((data: {
+        liveSearch?: boolean;
+        signupUrl?: string;
+        quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
+        cache?: { count: number };
+      }) => {
         setLiveSearch(Boolean(data.liveSearch));
         if (data.signupUrl) setSignupUrl(data.signupUrl);
         if (data.quota) {
           setRemaining(data.quota.remaining);
           setUserLimit(data.quota.userLimit);
+          if (data.quota.globalRemaining != null) setGlobalRemaining(data.quota.globalRemaining);
+          if (data.quota.globalUsed != null) setGlobalUsed(data.quota.globalUsed);
+          if (data.quota.globalLimit != null) setGlobalLimit(data.quota.globalLimit);
         }
         if (data.cache?.count != null) setCacheCount(data.cache.count);
       })
@@ -110,8 +130,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           signupUrl={signupUrl}
           remaining={remaining}
           userLimit={userLimit}
+          globalRemaining={globalRemaining}
+          globalUsed={globalUsed}
+          globalLimit={globalLimit}
           cacheCount={cacheCount}
-          onGraded={(data) => applyGrade(data as { results?: Row[]; notice?: string })}
+          onGraded={(data) => applyGrade(data as { results?: Row[]; notice?: string; quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number } })}
         />
         <details
           className="border-t border-[var(--line)] text-sm"

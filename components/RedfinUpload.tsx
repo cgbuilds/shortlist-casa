@@ -9,7 +9,13 @@ export type GradePayload = {
   source?: string;
   error?: string;
   signupUrl?: string;
-  quota?: { remaining: number; userLimit: number; globalRemaining?: number };
+  quota?: {
+    remaining: number;
+    userLimit: number;
+    globalRemaining?: number;
+    globalUsed?: number;
+    globalLimit?: number;
+  };
   fromCache?: boolean;
   pulled?: boolean;
   needsConfirm?: boolean;
@@ -24,6 +30,9 @@ export function RedfinUpload({
   signupUrl,
   remaining,
   userLimit,
+  globalRemaining,
+  globalUsed,
+  globalLimit,
   cacheCount,
   onGraded,
 }: {
@@ -34,6 +43,9 @@ export function RedfinUpload({
   signupUrl?: string;
   remaining?: number;
   userLimit?: number;
+  globalRemaining?: number;
+  globalUsed?: number;
+  globalLimit?: number;
   cacheCount?: number;
   onGraded?: (data: GradePayload) => void;
 }) {
@@ -74,6 +86,10 @@ export function RedfinUpload({
   const pullsLeft = remaining ?? userLimit ?? 3;
   const limit = userLimit ?? 3;
   const used = Math.max(0, limit - pullsLeft);
+  const accountLeft = globalRemaining ?? globalLimit ?? 50;
+  const accountLimit = globalLimit ?? 50;
+  const accountUsed = globalUsed ?? Math.max(0, accountLimit - accountLeft);
+  const canSpendPull = pullsLeft > 0 && accountLeft > 0;
 
   return (
     <section
@@ -93,7 +109,7 @@ export function RedfinUpload({
         <button
           type="button"
           className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
-          disabled={Boolean(pending) || pullsLeft <= 0}
+          disabled={Boolean(pending) || !canSpendPull}
           title="Spends 1 of 3 live searches. Cache never resets unless you confirm this or widen area/type/budget."
           onClick={() => void grade({ source: "live", draft: matrix, force: true }, "refresh")}
         >
@@ -126,7 +142,8 @@ export function RedfinUpload({
       <p className="mt-2 text-xs text-[var(--muted)]">
         {liveSearch ? (
           <>
-            Live searches {used}/{limit} used · {pullsLeft} left. Cache stays until you confirm another pull or
+            Live searches {used}/{limit} used · {pullsLeft} left. RentCast account {accountUsed}/{accountLimit}{" "}
+            this month (hard stop at 50 — no $0.20 overage). Cache stays until you confirm another pull or
             widen area/type/beds/price ({cacheCount ?? 0} cached). Search & grade re-grades for free when it
             still fits. Coffee, vibe, and drainage never spend a pull. Ask chat before using another search.
           </>

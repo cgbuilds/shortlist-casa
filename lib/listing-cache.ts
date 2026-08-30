@@ -1,7 +1,13 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import type { PropertyListing } from "@/lib/types";
 import type { SearchQuery } from "@/lib/rentcast";
 
 export const LIVE_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
+/** RentCast Developer plan included requests. Never send a call that would overage. */
+export const RENTCAST_HARD_CAP = 50;
+export const RENTCAST_CAP_MESSAGE =
+  "RentCast monthly cap of 50 API requests reached. This app will not send overage calls ($0.20 each). Re-grade the cache, upload a Redfin CSV, or wait until next month.";
 
 export type LiveQuota = {
   used: number;
@@ -33,6 +39,66 @@ const pulls = new Map<string, CachedPull>();
 const userUsed = new Map<string, number>();
 const globalUsed = new Map<string, number>();
 const userTail = new Map<string, Promise<unknown>>();
+let quotaHydrated = false;
+
+function quotaFile() {
+  return process.env.RENTCAST_QUOTA_FILE || join(process.cwd(), ".data", "rentcast-quota.json");
+}
+
+function hydrateQuota() {
+  if (quotaHydrated) return;
+  quotaHydrated = true;
+  try {
+    if (!existsSync(quotaFile())) return;
+    const raw = JSON.parse(readFileSync(quotaFile(), "utf8")) as {
+      month?: string;
+      globalUsed?: number;
+      users?: Record<string, number>;
+    };
+    const month = monthKey();
+    if (raw.month !== month) return;
+    globalUsed.set(`${month}:global`, Math.min(RENTCAST_HARD_CAP, raw.globalUsed ?? 0));
+    for (const [id, n] of Object.entries(raw.users ?? {})) {
+      userUsed.set(`${month}:${id}`, Number(n) || 0);
+    }
+  } catch {
+    /* missing or corrupt file starts at zero */
+  }
+}
+
+function persistQuota() {
+  const month = monthKey();
+  const users: Record<string, number> = {};
+  const prefix = `${month}:`;
+  for (const [k, v] of userUsed) {
+    if (k.startsWith(prefix) && k !== `${prefix}global`) users[k.slice(prefix.length)] = v;
+  }
+  const file = quotaFile();
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(
+    file,
+    JSON.stringify({
+      month,
+      globalUsed: globalUsed.get(`${month}:global`) ?? 0,
+      users,
+    })
+  );
+}
+
+export function resetLiveQuotaForTests() {
+  pulls.clear();
+  userUsed.clear();
+  globalUsed.clear();
+  quotaHydrated = true;
+}
+
+export function setLiveQuotaForTests(opts: { globalUsed?: number; userId?: string; used?: number }) {
+  hydrateQuota();
+  const month = monthKey();
+  if (opts.globalUsed != null) globalUsed.set(`${month}:global`, opts.globalUsed);
+  if (opts.userId && opts.used != null) userUsed.set(`${month}:${opts.userId}`, opts.used);
+  persistQuota();
+}
 
 function monthKey() {
   const d = new Date();
@@ -72,7 +138,9 @@ export function canReusePull(cached: SearchQuery, next: SearchQuery) {
 }
 
 export function quotaLimits() {
-  const globalLimit = Math.max(1, Number(process.env.RENTCAST_MONTHLY_LIMIT || 50));
+  const raw = Number(process.env.RENTCAST_MONTHLY_LIMIT || RENTCAST_HARD_CAP);
+  const requested = Number.isFinite(raw) ? raw : RENTCAST_HARD_CAP;
+  const globalLimit = Math.min(RENTCAST_HARD_CAP, Math.max(1, requested));
   const userLimit = Math.max(1, Number(process.env.RENTCAST_USER_MONTHLY_LIMIT || 3));
   return { globalLimit, userLimit };
 }
@@ -84,6 +152,7 @@ function usedMap(store: Map<string, number>, id: string) {
 }
 
 export function getLiveQuota(userId: string): LiveQuota {
+  hydrateQuota();
   const { globalLimit, userLimit } = quotaLimits();
   const month = monthKey();
   const used = userUsed.get(`${month}:${userId}`) ?? 0;
@@ -99,11 +168,26 @@ export function getLiveQuota(userId: string): LiveQuota {
   };
 }
 
-function consumeQuota(userId: string) {
+function consumeUserQuota(userId: string) {
+  hydrateQuota();
   const u = usedMap(userUsed, userId);
-  const g = usedMap(globalUsed, "global");
   userUsed.set(u.key, u.value + 1);
+  persistQuota();
+}
+
+/** Count one RentCast HTTP call before it is sent. Returns false at the hard 50 cap (no overage). */
+export function reserveRentcastCall(): boolean {
+  hydrateQuota();
+  const { globalLimit } = quotaLimits();
+  const g = usedMap(globalUsed, "global");
+  if (g.value >= globalLimit || g.value >= RENTCAST_HARD_CAP) return false;
   globalUsed.set(g.key, g.value + 1);
+  persistQuota();
+  return true;
+}
+
+export function atRentcastHardCap() {
+  return getLiveQuota("__cap__").globalRemaining <= 0;
 }
 
 export function getLiveCache(userId: string): LiveCacheSnapshot | null {
@@ -179,6 +263,10 @@ export async function withUserQueue<T>(userId: string, fn: () => Promise<T>): Pr
   }
 }
 
+export function withGlobalQueue<T>(fn: () => Promise<T>): Promise<T> {
+  return withUserQueue("__rentcast_global__", fn);
+}
+
 export function liveWorkarounds(cached: SearchQuery, next: SearchQuery): string[] {
   const tips: string[] = [];
   if ((cached.minBeds ?? 0) > (next.minBeds ?? 0)) {
@@ -222,8 +310,10 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
   const quota = getLiveQuota(userId);
   const cached = pulls.get(userId);
   const counter = `${quota.used}/${quota.userLimit} live searches used`;
+  const account = `${quota.globalUsed}/${quota.globalLimit} RentCast calls this month`;
+  const blocked = quota.remaining <= 0 || quota.globalRemaining <= 0;
   if (!cached) {
-    if (quota.remaining <= 0) {
+    if (blocked) {
       return {
         recommendation: "quota",
         canReuse: false,
@@ -235,7 +325,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
         remaining: quota.remaining,
         userLimit: quota.userLimit,
         workarounds: [],
-        advice: `No cached listings, and you are at the beta cap (${counter}). Upload a Redfin CSV or wait for next month.`,
+        advice: `No cached listings, and live search is blocked (${counter}; ${account}). This app never exceeds 50 RentCast requests (no $0.20 overage). Upload a Redfin CSV or wait until next month.`,
       };
     }
     return {
@@ -249,7 +339,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       remaining: quota.remaining,
       userLimit: quota.userLimit,
       workarounds: [],
-      advice: `First live search uses 1 of ${quota.userLimit}. After that, changing coffee, vibe, or tighter beds/price re-grades the cache for free. ${counter}; ${quota.remaining} left.`,
+      advice: `First live search uses 1 of ${quota.userLimit} (and 1 of ${quota.globalLimit} account calls). After that, changing coffee, vibe, or tighter beds/price re-grades the cache for free. ${counter}; ${quota.remaining} left. ${account}.`,
     };
   }
   const matches = filterListingsByQuery(cached.listings, query);
@@ -273,7 +363,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       advice: `${coveragePct}% of your cached list (${matches.length}/${cached.listings.length}) still matches. Re-grade for free — do not spend a live search. ${counter}; ${quota.remaining} left.`,
     };
   }
-  if (quota.remaining <= 0) {
+  if (blocked) {
     return {
       recommendation: "quota",
       canReuse: false,
@@ -285,7 +375,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       remaining: quota.remaining,
       userLimit: quota.userLimit,
       workarounds,
-      advice: `Beta cap reached (${counter}). ${coveragePct}% of the cached homes still fit. ${workarounds.join(" · ") || "Re-grade the cache."} A new pull is not available.`,
+      advice: `Live search blocked (${counter}; ${account}). ${coveragePct}% of the cached homes still fit. ${workarounds.join(" · ") || "Re-grade the cache."} No overage requests will be sent.`,
     };
   }
   return {
@@ -322,7 +412,7 @@ export function decideLivePull(
 }
 
 export function markFetched(userId: string, query: SearchQuery, listings: PropertyListing[]): LiveQuota {
-  consumeQuota(userId);
+  consumeUserQuota(userId);
   rememberLivePull(userId, query, listings);
   return getLiveQuota(userId);
 }

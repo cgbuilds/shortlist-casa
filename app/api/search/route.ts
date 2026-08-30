@@ -19,6 +19,7 @@ import {
   livePullNotice,
   markFetched,
   withUserQueue,
+  RENTCAST_CAP_MESSAGE,
 } from "@/lib/listing-cache";
 import { enrichListingsForMatrix } from "@/lib/osm-amenities";
 import { ensureMatrix } from "@/lib/matrix-tools";
@@ -129,9 +130,12 @@ export async function POST(request: Request) {
     return withUserQueue(user.id, async () => {
       const decision = decideLivePull(user.id, query, Boolean(body.force));
       if (decision.action === "quota") {
+        const accountEmpty = decision.quota.globalRemaining <= 0;
         return NextResponse.json(
           {
-            error: `Beta live-search cap reached (${decision.quota.used}/${decision.quota.userLimit}). Re-grade the cache or wait until next month.`,
+            error: accountEmpty
+              ? RENTCAST_CAP_MESSAGE
+              : `Beta live-search cap reached (${decision.quota.used}/${decision.quota.userLimit}). Re-grade the cache or wait until next month.`,
             quota: decision.quota,
             cache: getLiveCache(user.id),
             advice: adviseLiveSearch(user.id, query),
@@ -145,6 +149,17 @@ export async function POST(request: Request) {
       let quota = decision.quota;
       if (decision.action === "fetch") {
         const result = await searchListings(query);
+        if (result.blockedByCap) {
+          return NextResponse.json(
+            {
+              error: result.notice ?? RENTCAST_CAP_MESSAGE,
+              quota: getLiveQuota(user.id),
+              cache: getLiveCache(user.id),
+              advice: adviseLiveSearch(user.id, query),
+            },
+            { status: 429 }
+          );
+        }
         if (!result.listings.length) {
           return NextResponse.json({
             source: result.source,
@@ -194,21 +209,13 @@ export async function POST(request: Request) {
   }
 
   if (body.source === "rentcast") {
-    const parsed = body.q ? parseAddressFromInput(body.q) : null;
-    const looksLikePlace = Boolean(body.q && !parsed && !/\d/.test(body.q));
-    const result = await searchListings({
-      city: body.city || (looksLikePlace ? body.q : undefined),
-      state: body.state || (looksLikePlace ? "FL" : undefined),
-      zip: body.zip,
-      minBeds: body.minBeds,
-      minSqft: body.minSqft,
-      maxPrice: body.maxPrice,
-      address: parsed || undefined,
-    });
-    const ranked = await rank(result.listings, matrix);
-    await saveSearch(user, body, ranked.map((r) => r.listing.id));
-    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-    return NextResponse.json({ source: result.source, notice: result.notice, results: ranked });
+    return NextResponse.json(
+      {
+        error: "Direct RentCast queries are disabled so the 50/month account cap cannot be bypassed. Use live search (cached) or a Redfin CSV.",
+        quota: getLiveQuota(user.id),
+      },
+      { status: 400 }
+    );
   }
 
   const listings = body.source === "favorites" ? loadBundledRedfinFavorites() : getUserListings(user);

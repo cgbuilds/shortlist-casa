@@ -1,6 +1,7 @@
 import { parseSearchArea } from "@/kb/catalog";
 import { findRedfinListing } from "@/lib/redfin-csv";
 import { SEED_LISTINGS, slugAddress } from "@/data/listings";
+import { RENTCAST_CAP_MESSAGE, reserveRentcastCall, withGlobalQueue } from "@/lib/listing-cache";
 import type { PropertyListing, PropertyType, UserMatrix } from "@/lib/types";
 
 type RentCastListing = {
@@ -81,15 +82,20 @@ function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): Prop
 async function rentcast(path: string) {
   const key = process.env.RENTCAST_API_KEY;
   if (!key) throw new Error("RENTCAST_API_KEY missing");
-  const res = await fetch(`https://api.rentcast.io/v1${path}`, {
-    headers: { Accept: "application/json", "X-Api-Key": key },
-    cache: "no-store",
+  return withGlobalQueue(async () => {
+    if (!reserveRentcastCall()) {
+      throw new Error(RENTCAST_CAP_MESSAGE);
+    }
+    const res = await fetch(`https://api.rentcast.io/v1${path}`, {
+      headers: { Accept: "application/json", "X-Api-Key": key },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`RentCast ${res.status}: ${text.slice(0, 200)}`);
+    }
+    return res.json();
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`RentCast ${res.status}: ${text.slice(0, 200)}`);
-  }
-  return res.json();
 }
 
 export type SearchQuery = {
@@ -145,6 +151,7 @@ export async function searchListings(query: SearchQuery): Promise<{
   listings: PropertyListing[];
   source: "rentcast" | "seed";
   notice?: string;
+  blockedByCap?: boolean;
 }> {
   if (query.address && !query.radius) {
     const one = await lookupByAddress(query.address);
@@ -173,10 +180,13 @@ export async function searchListings(query: SearchQuery): Promise<{
       const listings = (Array.isArray(data) ? data : []).map((r) => toListing(r));
       return { listings, source: "rentcast" };
     } catch (err) {
+      const message = err instanceof Error ? err.message : "error";
+      const blockedByCap = message.includes("monthly cap of 50");
       return {
         listings: [],
         source: "rentcast",
-        notice: `Live search failed (${err instanceof Error ? err.message : "error"}).`,
+        notice: blockedByCap ? RENTCAST_CAP_MESSAGE : `Live search failed (${message}).`,
+        blockedByCap,
       };
     }
   }
