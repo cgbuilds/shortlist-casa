@@ -203,7 +203,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
       <aside
         className={`min-h-0 w-full flex-col border-[var(--line)] ${
           mobilePane === "chat" ? "flex flex-1" : "hidden"
@@ -325,7 +325,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
         <div className={`min-h-0 flex-1 ${view === "split" ? "flex flex-col md:flex-row" : "overflow-y-auto"}`}>
           {view === "split" ? (
-            <div className="min-h-[11rem] min-w-0 flex-[1.15] md:h-auto md:flex-1">
+            <div className="relative min-h-[11rem] min-w-0 flex-[1.15] overflow-hidden md:h-auto md:flex-1">
               <ResultsMap
                 rows={rows}
                 selectedId={selectedId}
@@ -358,7 +358,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       </section>
       </div>
 
-      <nav className="grid shrink-0 grid-cols-2 border-t border-[var(--line)] bg-[var(--paper-2)] pb-[env(safe-area-inset-bottom)] lg:hidden">
+      <nav className="relative z-20 grid shrink-0 grid-cols-2 border-t border-[var(--line)] bg-[var(--paper-2)] pb-[env(safe-area-inset-bottom)] lg:hidden">
         <button
           type="button"
           className={`px-3 py-2.5 text-sm ${mobilePane === "homes" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
