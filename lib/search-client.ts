@@ -54,7 +54,8 @@ function consumeLine(line: string, onProgress?: (p: RankProgress) => void) {
     return { done: null, error: msg.error ?? "Scoring failed" };
   }
   if (msg.type === "done") {
-    const { type: _type, analyzed: _a, total: _t, processing: _p, ...rest } = msg;
+    const rest = { ...msg };
+    delete (rest as { type?: string }).type;
     return { done: rest, error: null };
   }
   return { done: null, error: null };
