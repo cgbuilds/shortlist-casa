@@ -8,7 +8,7 @@ export function ChatMarkdown({ children, invert }: { children: string; invert?: 
     <div className={invert ? "chat-md chat-md-invert text-sm" : "chat-md text-sm"}>
       <Markdown
         components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+          p: ({ children }) => <div className="mb-2 last:mb-0 leading-relaxed">{children}</div>,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
           ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-4 last:mb-0">{children}</ul>,

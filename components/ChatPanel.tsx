@@ -5,9 +5,31 @@ import type { ChatMessage } from "@/lib/chat";
 import type { UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
 
+const CHAT_STORAGE_KEY = "homestead-chat-messages";
+
+const DEFAULT_MESSAGES: ChatMessage[] = [
+  {
+    role: "assistant",
+    content:
+      "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. We look for homes to buy unless you switch to rent. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
+  },
+];
+
 function emitChatLog(event: string, detail: Record<string, unknown>) {
   const payload = { t: new Date().toISOString(), event, ...detail };
   console.info("[homestead-chat]", payload);
+}
+
+function readStoredMessages(): ChatMessage[] | null {
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    if (Array.isArray(parsed) && parsed.length) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 export function ChatPanel({
@@ -21,33 +43,8 @@ export function ChatPanel({
   remaining?: number;
   userLimit?: number;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (typeof window === "undefined") {
-      return [
-        {
-          role: "assistant",
-          content:
-          "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. We look for homes to buy unless you switch to rent. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
-        },
-      ];
-    }
-    try {
-      const raw = window.sessionStorage.getItem("homestead-chat-messages");
-      if (raw) {
-        const parsed = JSON.parse(raw) as ChatMessage[];
-        if (Array.isArray(parsed) && parsed.length) return parsed;
-      }
-    } catch {
-      /* ignore */
-    }
-    return [
-      {
-        role: "assistant",
-        content:
-          "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. We look for homes to buy unless you switch to rent. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
-      },
-    ];
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
+  const [hydrated, setHydrated] = useState(false);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [committed, setCommitted] = useState(false);
@@ -55,16 +52,23 @@ export function ChatPanel({
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const stored = readStoredMessages();
+    if (stored) setMessages(stored);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages, pending, error]);
 
   useEffect(() => {
+    if (!hydrated) return;
     try {
-      window.sessionStorage.setItem("homestead-chat-messages", JSON.stringify(messages.slice(-40)));
+      window.sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-40)));
     } catch {
       /* ignore */
     }
-  }, [messages]);
+  }, [messages, hydrated]);
 
   async function send() {
     const next = text.trim();
