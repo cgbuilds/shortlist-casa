@@ -131,7 +131,12 @@ export function ChatPanel({
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Tampa, FL · 3 bed · 2 bath · SFR. Ask in chat to search live or confirm another pull…"
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.shiftKey) return;
+            e.preventDefault();
+            if (!pending) void send();
+          }}
+          placeholder="Tampa, FL · 3 bed · 2 bath · SFR. Enter to send · Shift+Enter for a new line"
           rows={3}
           className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm"
         />
