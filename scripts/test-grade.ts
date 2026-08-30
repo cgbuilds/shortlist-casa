@@ -4,7 +4,7 @@ import { join } from "path";
 import { defaultMatrix } from "../kb/catalog";
 import { SEED_LISTINGS } from "../data/listings";
 import { runMatrixChat } from "../lib/chat";
-import { bandFor, grade, gradeCaption } from "../lib/grade";
+import { bandFor, grade, gradeCaption, takeTopListings, wordCount } from "../lib/grade";
 import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
@@ -40,6 +40,8 @@ async function main() {
   assert(!g.mustHaveFailed, "unconfigured matrix should not fail must-haves");
   assert(g.band === "incomplete", "empty matrix is incomplete, not a fake pass");
   assert(g.incompleteReason, "incomplete explains why");
+  assert(g.why && wordCount(g.why) > 15, "grade why is more than 15 words");
+  assert(takeTopListings(Array.from({ length: 14 }, (_, i) => i)).length === 10, "list is capped at 10");
 
   const constructionOn = ensureMatrix({
     ...matrix,
@@ -51,6 +53,7 @@ async function main() {
   const frameHome = SEED_LISTINGS.find((l) => l.id === "4903-jenni-lin-dr")!;
   const fail = grade(frameHome, constructionOn);
   assert(fail.mustHaveFailed, "frame fails block must-have");
+  assert(fail.why && wordCount(fail.why) > 15, "miss grade why is more than 15 words");
 
   const parsed = parseAddressFromInput(
     "https://www.zillow.com/homedetails/5913-Flatwoods-Manor-Cir-Lithia-FL-33547/123_zpid/"

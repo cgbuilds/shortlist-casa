@@ -583,6 +583,69 @@ export function gradeCaption(grade: Pick<GradeResult, "total" | "band" | "mustHa
   return { score, word: grade.band };
 }
 
+export const TOP_LISTING_COUNT = 10;
+
+export function takeTopListings<T>(rows: T[]): T[] {
+  return rows.slice(0, TOP_LISTING_COUNT);
+}
+
+export function wordCount(text: string) {
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function padWhy(text: string) {
+  let out = text.replace(/\s+/g, " ").trim();
+  const extra =
+    " Check the score breakdown for every gate we could measure from the listing facts and your must-haves.";
+  while (wordCount(out) <= 15) out += extra;
+  return out;
+}
+
+export function explainGrade(
+  listing: PropertyListing,
+  opts: {
+    band: GradeResult["band"];
+    total: number | null;
+    mustHaveFailed: boolean;
+    perDimension: DimensionScore[];
+    incompleteReason?: string;
+  }
+) {
+  const scored = opts.perDimension.filter((d) => d.enabled && d.score != null);
+  const highs = [...scored].sort((a, b) => (b.score as number) - (a.score as number)).slice(0, 2);
+  const lows = [...scored]
+    .filter((d) => (d.score as number) < 70)
+    .sort((a, b) => (a.score as number) - (b.score as number))
+    .slice(0, 2);
+  const place = listing.city ? `${listing.address} in ${listing.city}` : listing.address;
+  const beds = listing.beds != null ? `${listing.beds} bedrooms` : "an unknown bedroom count";
+  const type = (listing.facts.propertyType ?? "home").replace(/_/g, " ");
+  const scoreBit = opts.total != null ? `the overall score is ${opts.total}` : "there is not yet a complete overall score";
+
+  const bandLead: Record<GradeResult["band"], string> = {
+    superb: `This home is superb because ${scoreBit} and it clears your must-haves with almost no weak gates, so it is more than merely excellent.`,
+    excellent: `This home is excellent rather than just good because ${scoreBit}, which means the main must-haves land strongly instead of only passing.`,
+    good: `This home is good rather than excellent because ${scoreBit}, so it fits your list but a few gates are only middling instead of strong.`,
+    pass: `This home only passes, not good or excellent, because ${scoreBit} and it meets the floor of your must-haves without standing out.`,
+    miss: `This home is a miss, not good or excellent, because a must-have failed even if other parts of the listing look fine.`,
+    incomplete:
+      opts.incompleteReason ??
+      "This grade is incomplete because we still lack enough facts to compare the home against your must-haves.",
+  };
+
+  const highBit = highs.length
+    ? ` It stands out on ${highs.map((d) => `${d.label.toLowerCase()} — ${d.reason}`).join("; ")}.`
+    : " We scored it against the must-haves you set in chat, using the facts on the listing.";
+  const lowBit = lows.length
+    ? ` It is held back by ${lows.map((d) => `${d.label.toLowerCase()} — ${d.reason}`).join("; ")}.`
+    : " No scored gate is a clear weak spot among the facts we have so far.";
+
+  return padWhy(`${bandLead[opts.band]} At ${place}, this ${type} with ${beds} is in the current ranked set.${highBit}${lowBit}`);
+}
+
 export function grade(listing: PropertyListing, matrix: UserMatrix): GradeResult {
   const perDimension: DimensionScore[] = [];
   for (const dim of CATALOG) {
@@ -637,6 +700,7 @@ export function grade(listing: PropertyListing, matrix: UserMatrix): GradeResult
     band,
     mustHaveFailed,
     incompleteReason,
+    why: explainGrade(listing, { band, total, mustHaveFailed, perDimension, incompleteReason }),
     perDimension,
     estimatedPitia: pitia,
     monthlySlack,

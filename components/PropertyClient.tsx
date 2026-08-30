@@ -35,6 +35,7 @@ export function PropertyClient({
         {listing.listPrice ? formatAskPrice(listing) : "price n/a"}
         {` · ${marketLabel(listingMarket(listing))}`}
       </p>
+      {g.why ? <p className="max-w-3xl leading-relaxed">{g.why}</p> : null}
       <div className="flex flex-wrap gap-2 text-sm">
         {links.map((l) => (
           <a

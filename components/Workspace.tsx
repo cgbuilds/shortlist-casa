@@ -8,6 +8,7 @@ import { PropertyCard } from "@/components/PropertyCard";
 import { RedfinUpload } from "@/components/RedfinUpload";
 import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
 import { defaultMatrix } from "@/kb/catalog";
+import { takeTopListings } from "@/lib/grade";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -20,6 +21,7 @@ type View = "list" | "split";
 export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [matrix, setMatrix] = useState(initialMatrix ?? defaultMatrix());
   const [rows, setRows] = useState<Row[]>([]);
+  const [totalMatched, setTotalMatched] = useState(0);
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("split");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   const applyGrade = useCallback((data: {
     results?: Row[];
+    totalMatched?: number;
     notice?: string;
     error?: string;
     quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
@@ -72,8 +75,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }) => {
     if (Array.isArray(data.results)) {
       if (data.results.length || !data.error) {
-        setRows(data.results);
-        if (data.results[0]) setSelectedId(data.results[0].listing.id);
+        const top = takeTopListings(data.results);
+        setRows(top);
+        setTotalMatched(data.totalMatched ?? data.results.length);
+        if (top[0]) setSelectedId(top[0].listing.id);
       }
     }
     setNotice(data.notice ?? data.error ?? "");
@@ -235,7 +240,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
           <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
-            {rows.length ? `${rows.length} homes` : "No homes yet"}
+            {rows.length
+              ? totalMatched > rows.length
+                ? `Top ${rows.length} of ${totalMatched} homes`
+                : `${rows.length} home${rows.length === 1 ? "" : "s"}`
+              : "No homes yet"}
             {` · ${matrix.intent === "rent" ? "Rent" : "Buy"}`}
             {matrix.searchArea ? ` · Must-haves: ${matrix.searchArea}` : " · No must-haves saved yet"}
             {notice ? ` · ${notice}` : ""}

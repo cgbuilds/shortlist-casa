@@ -75,6 +75,7 @@ export function ResultsMap({
                   {gradeCaption(row.grade).score} {gradeCaption(row.grade).word} · {row.listing.beds} bd ·{" "}
                   {row.listing.listPrice ? formatAskPrice(row.listing) : ""}
                 </p>
+                {row.grade.why ? <p className="mt-1 max-w-xs text-xs">{row.grade.why}</p> : null}
                 <p className="mt-1 flex gap-2">
                   {links.map((l) => (
                     <a key={l.name} href={l.href} target="_blank" rel="noreferrer">

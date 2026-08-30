@@ -122,6 +122,8 @@ export type GradeResult = {
   band: "superb" | "excellent" | "good" | "pass" | "miss" | "incomplete";
   mustHaveFailed: boolean;
   incompleteReason?: string;
+  /** Plain-language why this band (excellent vs good, etc). Always more than 15 words. */
+  why?: string;
   perDimension: DimensionScore[];
   estimatedPitia: number | null;
   monthlySlack: number | null;
