@@ -24,7 +24,7 @@ export type GradePayload = {
 };
 
 export function RedfinUpload({
-  heading = "Listings",
+  heading = "Actions",
   compact,
   matrix,
   liveSearch,
