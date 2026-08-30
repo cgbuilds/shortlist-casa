@@ -273,7 +273,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         </div>
       </div>
 
-      {chatOpen ? null : null}
       <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)}>
         <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
