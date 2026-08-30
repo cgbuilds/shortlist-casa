@@ -23,7 +23,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("split");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showLevers, setShowLevers] = useState(true);
+  const [showLevers, setShowLevers] = useState(false);
   const [liveSearch, setLiveSearch] = useState(false);
   const [signupUrl, setSignupUrl] = useState("https://www.rentcast.io/api");
   const [remaining, setRemaining] = useState<number | undefined>(undefined);
@@ -35,6 +35,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
   const [chatH, setChatH] = useState(320);
+  const [regrading, setRegrading] = useState(false);
   const skipMatrixGrade = useRef(true);
   const chatDrag = useRef<{ y: number; h: number } | null>(null);
   const chatHRef = useRef(chatH);
@@ -82,6 +83,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       body: JSON.stringify({ draft: m ?? matrix }),
     });
     applyGrade(await res.json());
+  }
+
+  async function forceRegrade() {
+    setRegrading(true);
+    try {
+      await refreshGrades();
+    } finally {
+      setRegrading(false);
+    }
   }
 
   async function runLive(m: UserMatrix, force: boolean) {
@@ -206,7 +216,17 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             {rows.length ? `${rows.length} homes` : "No homes yet"}
             {notice ? ` · ${notice}` : ""}
           </p>
-          <div className="flex rounded-lg border border-[var(--line)] text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              disabled={regrading}
+              title="Score the current list again. Does not spend a live search."
+              onClick={() => void forceRegrade()}
+            >
+              {regrading ? "Re-grading…" : "Re-grade list"}
+            </button>
+            <div className="flex rounded-lg border border-[var(--line)] text-sm">
             <button
               type="button"
               className={`px-3 py-1.5 ${view === "list" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
@@ -221,6 +241,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             >
               List + map
             </button>
+            </div>
           </div>
         </div>
 

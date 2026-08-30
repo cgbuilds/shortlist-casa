@@ -116,13 +116,7 @@ export function RedfinUpload({
             )
           }
         >
-          {pending === "live"
-            ? savedCount
-              ? "Grading…"
-              : "Searching…"
-            : savedCount
-              ? `Grade saved CSV (${savedCount})`
-              : "Search & grade"}
+          {pending === "live" ? "Re-grading…" : "Re-grade"}
         </button>
         <button
           type="button"
@@ -168,8 +162,9 @@ export function RedfinUpload({
           <>
             Live searches {used}/{limit} used · {pullsLeft} left. RentCast account {accountUsed}/{accountLimit}{" "}
             this month (hard stop at 50 — no $0.20 overage). Cache stays until you confirm another pull or
-            widen area/type/beds/price ({cacheCount ?? 0} cached). Search & grade re-grades for free when it
-            still fits. Coffee, vibe, and drainage never spend a pull. Ask chat before using another search.
+            widen area/type/beds/price ({cacheCount ?? 0} cached). <strong>Re-grade</strong> (also on the homes
+            bar) scores the current list for free. Coffee, vibe, and drainage never spend a pull. Ask chat
+            before using another live search.
           </>
         ) : signupUrl ? (
           <>
