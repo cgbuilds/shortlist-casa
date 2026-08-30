@@ -36,6 +36,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
   const [chatH, setChatH] = useState(320);
   const [regrading, setRegrading] = useState(false);
+  const [job, setJob] = useState<{ tone: "busy" | "ok" | "err"; text: string } | null>(null);
   const skipMatrixGrade = useRef(true);
   const chatDrag = useRef<{ y: number; h: number } | null>(null);
   const chatHRef = useRef(chatH);
@@ -60,9 +61,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     cache?: { count: number };
     saved?: { filename: string; count: number } | null;
   }) => {
-    if (data.results) {
-      setRows(data.results);
-      if (data.results[0]) setSelectedId(data.results[0].listing.id);
+    if (Array.isArray(data.results)) {
+      if (data.results.length || !data.error) {
+        setRows(data.results);
+        if (data.results[0]) setSelectedId(data.results[0].listing.id);
+      }
     }
     setNotice(data.notice ?? data.error ?? "");
     if (data.quota) {
@@ -80,15 +83,25 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     const res = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ draft: m ?? matrix }),
+      body: JSON.stringify({ source: "regrade", draft: m ?? matrix }),
     });
-    applyGrade(await res.json());
+    const data = await res.json();
+    applyGrade(data);
+    if (!res.ok) throw new Error(data.error ?? `Re-grade failed (${res.status})`);
+    return data as { notice?: string };
   }
 
   async function forceRegrade() {
     setRegrading(true);
+    setJob({ tone: "busy", text: "Re-grading the current list…" });
     try {
-      await refreshGrades();
+      const data = await refreshGrades();
+      setJob({ tone: "ok", text: data.notice ?? "Re-grade finished." });
+    } catch (err) {
+      setJob({
+        tone: "err",
+        text: err instanceof Error ? err.message : "Re-grade failed.",
+      });
     } finally {
       setRegrading(false);
     }
@@ -129,7 +142,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         }
       })
       .catch(() => undefined);
-    void refreshGrades();
+    void refreshGrades().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -138,7 +151,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       skipMatrixGrade.current = false;
       return;
     }
-    const t = window.setTimeout(() => void refreshGrades(matrix), 700);
+    const t = window.setTimeout(() => void refreshGrades(matrix).catch(() => undefined), 700);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matrix]);
@@ -153,6 +166,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             userLimit={userLimit}
             onMatrix={(m, _commit, extra) => {
               setMatrix(m);
+              void fetch("/api/matrix", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ matrix: m }),
+              }).catch(() => undefined);
               if (extra?.livePull) void runLive(m, true);
               else if (extra?.liveSearch) void runLive(m, false);
             }}
@@ -212,8 +230,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
-          <p className="text-sm text-[var(--muted)]">
+          <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
             {rows.length ? `${rows.length} homes` : "No homes yet"}
+            {matrix.searchArea ? ` · matrix: ${matrix.searchArea}` : " · matrix not saved yet"}
             {notice ? ` · ${notice}` : ""}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -244,6 +263,19 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             </div>
           </div>
         </div>
+        {job ? (
+          <p
+            className={`border-b border-[var(--line)] px-3 py-2 text-sm ${
+              job.tone === "err"
+                ? "bg-red-50 text-red-800"
+                : job.tone === "busy"
+                  ? "bg-[var(--paper-2)] text-[var(--ink)]"
+                  : "bg-[color-mix(in_oklab,var(--accent)_12%,var(--paper))] text-[var(--ink)]"
+            }`}
+          >
+            {job.text}
+          </p>
+        ) : null}
 
         <div className={`min-h-0 flex-1 ${view === "split" ? "flex flex-col md:flex-row" : "overflow-y-auto"}`}>
           {view === "split" ? (

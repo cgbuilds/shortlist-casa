@@ -24,6 +24,9 @@ export function PropertyCard({
         </div>
         <ScorePill grade={grade} />
       </div>
+      {grade.incompleteReason ? (
+        <p className="mt-2 text-xs text-[var(--muted)]">{grade.incompleteReason}</p>
+      ) : null}
       <p className="mt-3 text-sm">
         {listing.facts.propertyType ?? "home"} · {listing.beds ?? "—"} bd · {listing.baths ?? "—"} ba ·{" "}
         {listing.sqft?.toLocaleString() ?? "—"} sf

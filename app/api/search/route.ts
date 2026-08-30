@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     q?: string;
     csv?: string;
     filename?: string;
-    source?: "favorites" | "rentcast" | "upload" | "live" | "saved";
+    source?: "favorites" | "rentcast" | "upload" | "live" | "saved" | "regrade";
     draft?: UserMatrix;
     force?: boolean;
   };
@@ -228,6 +228,50 @@ export async function POST(request: Request) {
 
   const saved = getCsvMeta(user);
   const csv = getUserListings(user);
+  if (body.source === "regrade" || !body.source) {
+    const liveList = listingsFromCache(user.id);
+    const listings = liveList?.length ? liveList : csv;
+    if (!listings.length) {
+      const baseline = baselineStatus(matrix);
+      const why = !baseline.complete
+        ? `Nothing to re-grade, and the matrix is incomplete (${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}).`
+        : "Nothing to re-grade: no live cache and no saved CSV. Upload a Redfin CSV or confirm a live pull first.";
+      return NextResponse.json(
+        {
+          error: why,
+          results: undefined,
+          quota: getLiveQuota(user.id),
+          cache: getLiveCache(user.id),
+          saved,
+          matrixOn: baseline.complete,
+        },
+        { status: 409 }
+      );
+    }
+    const working = liveList?.length
+      ? filterListingsByQuery(listings, queryFromMatrix(matrix))
+      : filterList(listings, body);
+    const ranked = await rank(working, matrix);
+    await saveSearch(user, { source: "regrade" }, ranked.map((r) => r.listing.id));
+    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+    const incomplete = ranked.filter((r) => r.grade.band === "incomplete").length;
+    const cache = getLiveCache(user.id);
+    const quota = getLiveQuota(user.id);
+    const from = liveList?.length ? "live cache" : `saved file ${saved?.filename ?? "CSV"}`;
+    const notice =
+      incomplete === ranked.length && ranked.length
+        ? `Re-graded ${ranked.length} homes from ${from}, but every score is incomplete — the matrix has no scoring knobs on, or listings lack year/type/price.`
+        : `Re-graded ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.`;
+    return NextResponse.json({
+      source: liveList?.length ? "cache" : "saved",
+      notice,
+      results: ranked,
+      quota,
+      cache,
+      saved,
+    });
+  }
+
   if (body.source === "saved") {
     if (!csv.length) {
       return NextResponse.json(
@@ -264,37 +308,5 @@ export async function POST(request: Request) {
     });
   }
 
-  const liveList = listingsFromCache(user.id);
-  const listings = csv.length ? csv : liveList ?? [];
-  const working = csv.length
-    ? filterList(listings, body)
-    : liveList
-      ? filterListingsByQuery(liveList, queryFromMatrix(matrix))
-      : [];
-  const ranked = await rank(working, matrix);
-  await saveSearch(user, body, ranked.map((r) => r.listing.id));
-  for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-  const cache = getLiveCache(user.id);
-  const quota = getLiveQuota(user.id);
-  const notice = csv.length
-    ? `Graded ${ranked.length} homes from saved file ${saved?.filename ?? "your CSV"}.`
-    : cache
-      ? livePullNotice({
-          fromCache: true,
-          stale: cache.stale,
-          pulled: false,
-          count: ranked.length,
-          fetchedAt: cache.fetchedAt,
-          quota,
-          searchArea: matrix.searchArea,
-        })
-      : "No saved CSV and no live cache yet. Upload a Redfin Favorites CSV or use a live search.";
-  return NextResponse.json({
-    source: csv.length ? "saved" : cache ? "cache" : "session",
-    notice,
-    results: ranked,
-    quota,
-    cache,
-    saved,
-  });
+  return NextResponse.json({ error: "Unknown search source." }, { status: 400 });
 }

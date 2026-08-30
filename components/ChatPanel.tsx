@@ -21,13 +21,33 @@ export function ChatPanel({
   remaining?: number;
   userLimit?: number;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") {
+      return [
+        {
+          role: "assistant",
+          content:
+            "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
+        },
+      ];
+    }
+    try {
+      const raw = window.sessionStorage.getItem("homestead-chat-messages");
+      if (raw) {
+        const parsed = JSON.parse(raw) as ChatMessage[];
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    return [
+      {
+        role: "assistant",
+        content:
+          "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
+      },
+    ];
+  });
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [committed, setCommitted] = useState(false);
@@ -37,6 +57,14 @@ export function ChatPanel({
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages, pending, error]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem("homestead-chat-messages", JSON.stringify(messages.slice(-40)));
+    } catch {
+      /* ignore */
+    }
+  }, [messages]);
 
   async function send() {
     const next = text.trim();
@@ -132,6 +160,7 @@ export function ChatPanel({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
             if (e.key !== "Enter" || e.shiftKey) return;
             e.preventDefault();
             if (!pending) void send();

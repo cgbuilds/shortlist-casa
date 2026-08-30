@@ -590,11 +590,23 @@ export function grade(listing: PropertyListing, matrix: UserMatrix): GradeResult
 
   const pitia = estimatePitia(listing, matrix);
   const monthlySlack = pitia != null && matrix.budget.maxPitia != null ? matrix.budget.maxPitia - pitia : null;
+  const band = bandFor(total, mustHaveFailed);
+  let incompleteReason: string | undefined;
+  if (band === "incomplete") {
+    if (!active.length) {
+      incompleteReason = "Your matrix is empty — beds, baths, type, and area are not on. Commit them in chat.";
+    } else if (!scored.length) {
+      incompleteReason = "This listing is missing the facts those gates need (year, type, price, etc.).";
+    } else {
+      incompleteReason = "Not enough scored fields for a total yet.";
+    }
+  }
 
   return {
     total,
-    band: bandFor(total, mustHaveFailed),
+    band,
     mustHaveFailed,
+    incompleteReason,
     perDimension,
     estimatedPitia: pitia,
     monthlySlack,

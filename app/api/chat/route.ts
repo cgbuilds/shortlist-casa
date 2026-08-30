@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const saved = await loadActiveMatrix(user);
   const draft = ensureMatrix(body.draft ?? saved);
   const result = await runMatrixChat(draft, body.messages ?? [], text, { userId: user.id });
-  if (result.commit) await saveActiveMatrix(user, result.matrix);
+  await saveActiveMatrix(user, result.matrix);
 
   console.info("[homestead-chat]", {
     userId: user.id,

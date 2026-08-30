@@ -36,6 +36,8 @@ async function main() {
   const sample = favorites.find((l) => l.address.includes("Eagle Bluff"))!;
   const g = grade(sample, matrix);
   assert(!g.mustHaveFailed, "unconfigured matrix should not fail must-haves");
+  assert(g.band === "incomplete", "empty matrix is incomplete, not a fake pass");
+  assert(g.incompleteReason, "incomplete explains why");
 
   const constructionOn = ensureMatrix({
     ...matrix,

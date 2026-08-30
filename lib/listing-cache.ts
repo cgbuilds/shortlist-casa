@@ -40,6 +40,34 @@ const userUsed = new Map<string, number>();
 const globalUsed = new Map<string, number>();
 const userTail = new Map<string, Promise<unknown>>();
 let quotaHydrated = false;
+let pullsHydrated = false;
+
+function cacheFile() {
+  if (process.env.RENTCAST_QUOTA_FILE) return `${process.env.RENTCAST_QUOTA_FILE}.cache.json`;
+  return join(process.cwd(), ".data", "live-cache.json");
+}
+
+function hydratePulls() {
+  if (pullsHydrated) return;
+  pullsHydrated = true;
+  try {
+    if (!existsSync(cacheFile())) return;
+    const raw = JSON.parse(readFileSync(cacheFile(), "utf8")) as Record<string, CachedPull>;
+    for (const [id, row] of Object.entries(raw)) {
+      if (row?.listings?.length) pulls.set(id, row);
+    }
+  } catch {
+    /* start empty */
+  }
+}
+
+function persistPulls() {
+  const out: Record<string, CachedPull> = {};
+  for (const [id, row] of pulls) out[id] = row;
+  const file = cacheFile();
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(out));
+}
 
 function quotaFile() {
   return process.env.RENTCAST_QUOTA_FILE || join(process.cwd(), ".data", "rentcast-quota.json");
@@ -90,6 +118,7 @@ export function resetLiveQuotaForTests() {
   userUsed.clear();
   globalUsed.clear();
   quotaHydrated = true;
+  pullsHydrated = true;
 }
 
 export function setLiveQuotaForTests(opts: { globalUsed?: number; userId?: string; used?: number }) {
@@ -191,6 +220,7 @@ export function atRentcastHardCap() {
 }
 
 export function getLiveCache(userId: string): LiveCacheSnapshot | null {
+  hydratePulls();
   const row = pulls.get(userId);
   if (!row) return null;
   const expiresAt = row.fetchedAt;
@@ -215,18 +245,21 @@ export function filterListingsByQuery(listings: PropertyListing[], query: Search
 }
 
 export function listingsFromCache(userId: string): PropertyListing[] | null {
+  hydratePulls();
   const row = pulls.get(userId);
   if (!row) return null;
   return row.listings;
 }
 
 export function rememberLivePull(userId: string, query: SearchQuery, listings: PropertyListing[]) {
+  hydratePulls();
   pulls.set(userId, {
     queryKey: liveQueryKey(query),
     query,
     listings,
     fetchedAt: Date.now(),
   });
+  persistPulls();
 }
 
 function formatAge(fetchedAt: number) {
@@ -307,6 +340,7 @@ export type LiveAdvice = {
 };
 
 export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice {
+  hydratePulls();
   const quota = getLiveQuota(userId);
   const cached = pulls.get(userId);
   const counter = `${quota.used}/${quota.userLimit} live searches used`;
@@ -398,6 +432,7 @@ export function decideLivePull(
   query: SearchQuery,
   force: boolean
 ): { action: "cache" | "fetch" | "confirm" | "quota"; cached?: CachedPull; quota: LiveQuota } {
+  hydratePulls();
   const quota = getLiveQuota(userId);
   const cached = pulls.get(userId);
   const reusable = Boolean(cached && canReusePull(cached.query, query));

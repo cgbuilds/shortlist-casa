@@ -86,6 +86,32 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   return null;
 }
 
+function matrixFile(userId: string) {
+  const safe = userId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "user";
+  return join(process.cwd(), ".data", `matrix-${safe}.json`);
+}
+
+function hydrateMatrix(userId: string): UserMatrix | undefined {
+  const mem = memoryMatrices.get(userId);
+  if (mem) return mem;
+  try {
+    const file = matrixFile(userId);
+    if (!existsSync(file)) return undefined;
+    const raw = JSON.parse(readFileSync(file, "utf8")) as UserMatrix;
+    const matrix = ensureMatrix(raw);
+    memoryMatrices.set(userId, matrix);
+    return matrix;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistMatrix(userId: string, matrix: UserMatrix) {
+  memoryMatrices.set(userId, matrix);
+  mkdirSync(join(process.cwd(), ".data"), { recursive: true });
+  writeFileSync(matrixFile(userId), JSON.stringify(matrix));
+}
+
 export async function loadActiveMatrix(user: SessionUser): Promise<UserMatrix> {
   if (!user.demo && isSupabaseConfigured()) {
     const supabase = await createSupabaseServer();
@@ -96,14 +122,18 @@ export async function loadActiveMatrix(user: SessionUser): Promise<UserMatrix> {
         .eq("user_id", user.id)
         .eq("is_active", true)
         .maybeSingle();
-      if (data?.payload) return ensureMatrix(data.payload as UserMatrix);
+      if (data?.payload) {
+        const matrix = ensureMatrix(data.payload as UserMatrix);
+        memoryMatrices.set(user.id, matrix);
+        return matrix;
+      }
     }
   }
-  return ensureMatrix(memoryMatrices.get(user.id));
+  return ensureMatrix(hydrateMatrix(user.id));
 }
 
 export async function saveActiveMatrix(user: SessionUser, matrix: UserMatrix) {
-  memoryMatrices.set(user.id, matrix);
+  persistMatrix(user.id, matrix);
   if (user.demo || !isSupabaseConfigured()) return;
   const supabase = await createSupabaseServer();
   if (!supabase) return;

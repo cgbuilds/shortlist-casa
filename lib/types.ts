@@ -113,6 +113,7 @@ export type GradeResult = {
   total: number | null;
   band: "superb" | "excellent" | "good" | "pass" | "miss" | "incomplete";
   mustHaveFailed: boolean;
+  incompleteReason?: string;
   perDimension: DimensionScore[];
   estimatedPitia: number | null;
   monthlySlack: number | null;
