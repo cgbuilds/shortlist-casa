@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { baselineStatus } from "@/kb/catalog";
 import { adviseLiveSearch, grantCourtesySearch, getLiveQuota, isPoliteExtraSearchAsk } from "@/lib/listing-cache";
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
+import { WHY_GRADE_INSTRUCTIONS } from "@/lib/grade";
 import { queryFromMatrix } from "@/lib/rentcast";
 import type { UserMatrix } from "@/lib/types";
 
@@ -34,6 +35,8 @@ Do not keep Valrico, Brandon, Bloomingdale, or River Hills unless the user said 
 Format replies as markdown with **bold** labels and dash lists.
 Keep replies short. After tools, recap what is set and what baseline is still missing.
 When baseline is complete AND the user confirms, call commit_matrix. Tell them their must-haves are saved — never say matrix.
+
+${WHY_GRADE_INSTRUCTIONS}
 
 LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-grades the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.
 If they want more than 3 live searches, tell them to re-grade the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;

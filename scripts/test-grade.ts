@@ -41,6 +41,8 @@ async function main() {
   assert(g.band === "incomplete", "empty matrix is incomplete, not a fake pass");
   assert(g.incompleteReason, "incomplete explains why");
   assert(g.why && wordCount(g.why) > 15, "grade why is more than 15 words");
+  assert(!/because the overall score is/i.test(g.why), "why is not circular about the score");
+  assert(/What works:/i.test(g.why) && /What doesn't:/i.test(g.why), "why uses the strengths/tradeoffs template");
   assert(takeTopListings(Array.from({ length: 14 }, (_, i) => i)).length === 10, "list is capped at 10");
 
   const constructionOn = ensureMatrix({
@@ -54,6 +56,7 @@ async function main() {
   const fail = grade(frameHome, constructionOn);
   assert(fail.mustHaveFailed, "frame fails block must-have");
   assert(fail.why && wordCount(fail.why) > 15, "miss grade why is more than 15 words");
+  assert(!/because the overall score is/i.test(fail.why), "miss why is not circular");
 
   const parsed = parseAddressFromInput(
     "https://www.zillow.com/homedetails/5913-Flatwoods-Manor-Cir-Lithia-FL-33547/123_zpid/"

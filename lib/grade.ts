@@ -1,4 +1,4 @@
-import { CATALOG, catalogById, parseSearchArea, placesMatch } from "@/kb/catalog";
+import { CATALOG, catalogById, parseSearchArea, placesMatch, PROPERTY_TYPE_LABELS } from "@/kb/catalog";
 import { RENT_PRICE_CEILING } from "@/lib/listing-market";
 import { inferVibe } from "@/lib/osm-amenities";
 import type {
@@ -596,12 +596,113 @@ export function wordCount(text: string) {
     .filter(Boolean).length;
 }
 
+/** Fill-in copy for cards and for the chat agent. Never justify a band with the numeric score. */
+export const WHY_GRADE_TEMPLATE =
+  "{fit} {home} What works: {strengths}. What doesn't: {tradeoffs}.";
+
+export const WHY_GRADE_FIT: Record<GradeResult["band"], string> = {
+  superb: "This is one of the closest matches to what you asked for.",
+  excellent: "This is a strong match, with only small gaps against your must-haves.",
+  good: "This is a decent match with some real tradeoffs, so it is not at the top of your list.",
+  pass: "This clears the basics but has more mismatches than the stronger homes above it.",
+  miss: "Skip this one unless you drop a must-have — it fails something you said you need.",
+  incomplete: "We cannot fairly rank this yet — too many listing facts are still blank.",
+};
+
+export const WHY_GRADE_INSTRUCTIONS = `When you describe a home, fill this template (same as the cards). Never write that it is good/excellent "because the score is N".
+Template: ${WHY_GRADE_TEMPLATE}
+Fit lines: superb="${WHY_GRADE_FIT.superb}" excellent="${WHY_GRADE_FIT.excellent}" good="${WHY_GRADE_FIT.good}" pass="${WHY_GRADE_FIT.pass}" miss="${WHY_GRADE_FIT.miss}" incomplete="${WHY_GRADE_FIT.incomplete}"
+Home: "{address} in {city} is a {beds}-bed {type} listed at {price}."
+Strengths/tradeoffs: two concrete facts vs their must-haves (baths, type, walkability, named neighborhoods). Keep the whole blurb over 15 words.`;
+
 function padWhy(text: string) {
   let out = text.replace(/\s+/g, " ").trim();
   const extra =
-    " Check the score breakdown for every gate we could measure from the listing facts and your must-haves.";
+    " Compare those facts to your must-haves in chat if you want to change what we treat as a dealbreaker.";
   while (wordCount(out) <= 15) out += extra;
   return out;
+}
+
+function typeWord(raw?: string | null) {
+  if (!raw) return "home";
+  return (PROPERTY_TYPE_LABELS[raw] ?? raw.replace(/_/g, " ")).toLowerCase();
+}
+
+function prettyCommunity(raw: string) {
+  const cleaned = raw
+    .replace(/\bTWNHMS?\b/gi, "")
+    .replace(/\bCONDOS?\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return raw;
+  return cleaned.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
+}
+
+function joinAnd(parts: string[]) {
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return `${parts[0]}, and ${parts[1]}`;
+  return `${parts.slice(0, -1).join("; ")}; and ${parts[parts.length - 1]}`;
+}
+
+function factPhrase(d: DimensionScore, tone: "up" | "down"): string {
+  const r = d.reason.replace(/\s+/g, " ").trim();
+  if (d.id === "beds") {
+    const m = r.match(/^([\d.]+) beds \(min (\d+)\)/i);
+    if (m) {
+      const have = m[1];
+      const min = m[2];
+      if (tone === "up" && Number(have) > Number(min)) return `${have} bedrooms, above your ${min}-bed floor`;
+      if (tone === "up") return `${have} bedrooms, matching the ${min} you asked for`;
+      return `only ${have} bedrooms, below your ${min}-bed floor`;
+    }
+  }
+  if (d.id === "baths") {
+    const m = r.match(/^([\d.]+) baths \(min (\d+)/i);
+    if (m) {
+      const have = m[1];
+      const min = m[2];
+      if (tone === "up" && Number(have) > Number(min)) return `${have} baths, above your ${min}-bath floor`;
+      if (tone === "up") return `${have} baths, matching what you asked for`;
+      return `only ${have} baths, below your ${min}-bath floor`;
+    }
+  }
+  if (d.id === "walkable") {
+    const counts = r.match(/(\d+) cafés?, (\d+) shops/i);
+    if (counts && /walkable/i.test(r)) {
+      return `a walkable block with ${counts[1]} cafés and ${counts[2]} shops nearby`;
+    }
+    if (/walkable/i.test(r)) return "a walkable location";
+    if (counts) return `not very walkable (${counts[1]} cafés, ${counts[2]} shops nearby)`;
+    return "a car-dependent location";
+  }
+  if (d.id === "property_type") {
+    const m = r.match(/^(\w+) \(prefer (\w+)\)/i);
+    if (m) {
+      const have = typeWord(m[1]);
+      const want = typeWord(m[2]);
+      if (tone === "down" && have !== want) return `this is a ${have}, and you preferred a ${want}`;
+      return `this is the ${have} type you asked for`;
+    }
+  }
+  if (d.id === "school_area") {
+    if (/outside named neighborhoods/i.test(r)) {
+      const name = prettyCommunity(r.replace(/\s+is outside named neighborhoods/i, ""));
+      return `it is in ${name}, which is not one of the neighborhoods you named`;
+    }
+    if (/is outside /i.test(r)) return r.replace(/\s+is outside /, " sits outside ");
+    if (/matches /i.test(r) || /is in /i.test(r)) return `it is in an area that matches what you named`;
+    if (/No neighborhood filter/i.test(r)) return "you did not name specific neighborhoods";
+  }
+  if (d.id === "construction") {
+    const m = r.match(/^(\w+) \(prefer (\w+)\)/i);
+    if (m && tone === "down") return `construction is ${m[1]}, and you preferred ${m[2]}`;
+    if (m) return `${m[1]} construction, which is what you preferred`;
+  }
+  if (d.id === "price_cap") {
+    return tone === "up" ? `the ask is within your budget (${r})` : `the ask is tight vs your budget (${r})`;
+  }
+  return r.charAt(0).toLowerCase() + r.slice(1);
 }
 
 export function explainGrade(
@@ -615,35 +716,34 @@ export function explainGrade(
   }
 ) {
   const scored = opts.perDimension.filter((d) => d.enabled && d.score != null);
+  const failed = opts.perDimension.filter((d) => d.enabled && d.mustHaveFailed);
   const highs = [...scored].sort((a, b) => (b.score as number) - (a.score as number)).slice(0, 2);
-  const lows = [...scored]
-    .filter((d) => (d.score as number) < 70)
+  const lows = (failed.length ? failed : [...scored].filter((d) => (d.score as number) < 70))
     .sort((a, b) => (a.score as number) - (b.score as number))
     .slice(0, 2);
-  const place = listing.city ? `${listing.address} in ${listing.city}` : listing.address;
-  const beds = listing.beds != null ? `${listing.beds} bedrooms` : "an unknown bedroom count";
-  const type = (listing.facts.propertyType ?? "home").replace(/_/g, " ");
-  const scoreBit = opts.total != null ? `the overall score is ${opts.total}` : "there is not yet a complete overall score";
-
-  const bandLead: Record<GradeResult["band"], string> = {
-    superb: `This home is superb because ${scoreBit} and it clears your must-haves with almost no weak gates, so it is more than merely excellent.`,
-    excellent: `This home is excellent rather than just good because ${scoreBit}, which means the main must-haves land strongly instead of only passing.`,
-    good: `This home is good rather than excellent because ${scoreBit}, so it fits your list but a few gates are only middling instead of strong.`,
-    pass: `This home only passes, not good or excellent, because ${scoreBit} and it meets the floor of your must-haves without standing out.`,
-    miss: `This home is a miss, not good or excellent, because a must-have failed even if other parts of the listing look fine.`,
-    incomplete:
-      opts.incompleteReason ??
-      "This grade is incomplete because we still lack enough facts to compare the home against your must-haves.",
-  };
-
-  const highBit = highs.length
-    ? ` It stands out on ${highs.map((d) => `${d.label.toLowerCase()} — ${d.reason}`).join("; ")}.`
-    : " We scored it against the must-haves you set in chat, using the facts on the listing.";
-  const lowBit = lows.length
-    ? ` It is held back by ${lows.map((d) => `${d.label.toLowerCase()} — ${d.reason}`).join("; ")}.`
-    : " No scored gate is a clear weak spot among the facts we have so far.";
-
-  return padWhy(`${bandLead[opts.band]} At ${place}, this ${type} with ${beds} is in the current ranked set.${highBit}${lowBit}`);
+  const beds = listing.beds != null ? `${listing.beds}-bed` : "";
+  const type = typeWord(listing.facts.propertyType);
+  const price = listing.listPrice
+    ? ` listed at $${listing.listPrice.toLocaleString()}`
+    : "";
+  const city = listing.city ? ` in ${listing.city}` : "";
+  const home = `${listing.address}${city} is a ${[beds, type].filter(Boolean).join(" ")}${price}.`;
+  const fit =
+    opts.band === "incomplete" && opts.incompleteReason
+      ? `${WHY_GRADE_FIT.incomplete} ${opts.incompleteReason}`
+      : WHY_GRADE_FIT[opts.band];
+  const strengths = highs.length
+    ? joinAnd(highs.map((d) => factPhrase(d, "up")))
+    : "nothing scored really stands out yet";
+  const tradeoffs = lows.length
+    ? joinAnd(lows.map((d) => factPhrase(d, "down")))
+    : "nothing scored looks like a serious problem";
+  return padWhy(
+    WHY_GRADE_TEMPLATE.replace("{fit}", fit)
+      .replace("{home}", home)
+      .replace("{strengths}", strengths)
+      .replace("{tradeoffs}", tradeoffs)
+  );
 }
 
 export function grade(listing: PropertyListing, matrix: UserMatrix): GradeResult {
