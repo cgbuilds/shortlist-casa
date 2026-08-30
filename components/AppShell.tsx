@@ -19,7 +19,7 @@ export function AppShell({
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             {email ? <span className="hidden text-[var(--muted)] sm:inline">{email}</span> : null}
-            <form action="/api/logout" method="post">
+            <form action="/api/logout" method="post" suppressHydrationWarning>
               <button type="submit" className="text-[var(--muted)] hover:text-[var(--ink)]">
                 Sign out
               </button>

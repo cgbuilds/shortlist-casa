@@ -14,13 +14,15 @@ const sans = Source_Sans_3({
 
 export const metadata: Metadata = {
   title: "Homestead Matrix",
-  description: "Grade homes against must-haves you set in chat.",
+  description: "Score homes against must-haves you set in chat.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${display.variable} ${sans.variable} antialiased`}>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${display.variable} ${sans.variable} antialiased`} suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

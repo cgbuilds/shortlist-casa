@@ -164,6 +164,7 @@ export function ChatPanel({
       </div>
       <form
         className="flex gap-2 border-t border-[var(--line)] p-3"
+        suppressHydrationWarning
         onSubmit={(e) => {
           e.preventDefault();
           void send();
@@ -171,6 +172,7 @@ export function ChatPanel({
       >
         <textarea
           value={text}
+          suppressHydrationWarning
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;

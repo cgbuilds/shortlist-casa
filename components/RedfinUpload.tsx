@@ -133,6 +133,7 @@ export function RedfinUpload({
           type="file"
           accept=".csv,text/csv"
           className="hidden"
+          suppressHydrationWarning
           onChange={(e) => void onFile(e.target.files?.[0])}
         />
       </div>
