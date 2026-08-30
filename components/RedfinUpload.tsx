@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
+import { postSearch } from "@/lib/search-client";
+import type { RankProgress } from "@/lib/rank-listings";
 import type { UserMatrix } from "@/lib/types";
 
 export type GradePayload = {
@@ -39,6 +41,7 @@ export function RedfinUpload({
   savedFilename,
   savedCount,
   onGraded,
+  onScoreProgress,
 }: {
   heading?: string;
   compact?: boolean;
@@ -54,6 +57,7 @@ export function RedfinUpload({
   savedFilename?: string;
   savedCount?: number;
   onGraded?: (data: GradePayload) => void;
+  onScoreProgress?: (p: RankProgress) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("");
@@ -63,19 +67,14 @@ export function RedfinUpload({
     setPending(kind);
     setStatus("");
     try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = (await res.json()) as GradePayload;
-      if (!res.ok) {
+      const { ok, data } = await postSearch(body, { onProgress: onScoreProgress });
+      if (!ok) {
         setStatus(data.error ?? "Could not load listings.");
-        onGraded?.(data);
+        onGraded?.(data as GradePayload);
         return;
       }
-      setStatus(data.notice ?? "Graded.");
-      onGraded?.(data);
+      setStatus(data.notice ?? "Scored.");
+      onGraded?.(data as GradePayload);
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -119,7 +118,7 @@ export function RedfinUpload({
           disabled={Boolean(pending)}
           onClick={() => input.current?.click()}
         >
-          {pending === "csv" ? "Grading…" : "Upload CSV"}
+          {pending === "csv" ? "Scoring…" : "Upload CSV"}
         </button>
         <button
           type="button"
@@ -139,7 +138,7 @@ export function RedfinUpload({
       </div>
       {savedFilename && savedCount ? (
         <Fold title={`Saved file · ${savedCount} home${savedCount === 1 ? "" : "s"}`} titleClassName="text-[var(--accent)]">
-          {savedFilename} stays on this account after refresh. Re-grade (homes bar) uses this list; a live
+          {savedFilename} stays on this account after refresh. Run Scoring (homes bar) uses this list; a live
           search will not replace it.
         </Fold>
       ) : null}

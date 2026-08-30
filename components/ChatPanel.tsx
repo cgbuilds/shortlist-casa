@@ -37,11 +37,13 @@ export function ChatPanel({
   onMatrix,
   remaining,
   userLimit = 3,
+  scoreProgress,
 }: {
   matrix: UserMatrix;
   onMatrix: (m: UserMatrix, committed: boolean, extra?: { livePull?: boolean; liveSearch?: boolean }) => void;
   remaining?: number;
   userLimit?: number;
+  scoreProgress?: { analyzed: number; total: number; processing: number } | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
   const [hydrated, setHydrated] = useState(false);
@@ -125,12 +127,20 @@ export function ChatPanel({
             Live searches{" "}
             <span className="text-[var(--ink)]">
               {Math.max(0, userLimit - remaining)}/{userLimit}
-            </span>{" "}
-            used · {remaining} left
+            </span>
           </>
         ) : (
-          <>Beta: {userLimit} live searches per user</>
+          <>Live searches {userLimit}/user</>
         )}
+        {scoreProgress && scoreProgress.total > 0 ? (
+          <>
+            {" · "}
+            <span className="text-[var(--ink)]">
+              {scoreProgress.analyzed}/{scoreProgress.total} scored
+            </span>
+            {scoreProgress.processing > 0 ? `, ${scoreProgress.processing} processing…` : ""}
+          </>
+        ) : null}
       </div>
       <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.map((m, i) => (
@@ -149,7 +159,7 @@ export function ChatPanel({
         {error && !pending ? <p className="text-xs text-[var(--muted)]">{error}</p> : null}
         {committed ? (
           <p className="text-xs text-[var(--accent)]">
-            Must-haves saved. Upload a CSV below — homes will grade on this page.
+            Must-haves saved. Upload a CSV below — homes will score on this page.
           </p>
         ) : null}
       </div>

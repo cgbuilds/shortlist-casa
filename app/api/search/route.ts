@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { baselineStatus } from "@/kb/catalog";
-import { grade, TOP_LISTING_COUNT, takeTopListings } from "@/lib/grade";
+import { TOP_LISTING_COUNT, takeTopListings } from "@/lib/grade";
 import { loadBundledRedfinFavorites, parseRedfinCsv } from "@/lib/redfin-csv";
 import {
   hasLiveSearch,
@@ -21,30 +21,65 @@ import {
   withUserQueue,
   RENTCAST_CAP_MESSAGE,
 } from "@/lib/listing-cache";
-import { enrichListingsForMatrix } from "@/lib/osm-amenities";
+import { rankListings, type RankRow } from "@/lib/rank-listings";
 import { ensureMatrix } from "@/lib/matrix-tools";
 import { getSessionUser, getUserListings, getCsvMeta, loadActiveMatrix, saveCsvListings, saveGrade, saveSearch } from "@/lib/session";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
-async function rank(listings: PropertyListing[], matrix: UserMatrix) {
-  const ready = await enrichListingsForMatrix(listings, matrix);
-  return ready
-    .map((listing) => {
-      rememberListing(listing);
-      const g = grade(listing, matrix);
-      return { listing, grade: g };
-    })
-    .sort((a, b) => {
-      if (a.grade.mustHaveFailed !== b.grade.mustHaveFailed) return a.grade.mustHaveFailed ? 1 : -1;
-      return (b.grade.total ?? -1) - (a.grade.total ?? -1);
-    });
+function ndjsonStream(run: (emit: (obj: unknown) => void) => Promise<void>) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (obj: unknown) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
+      };
+      try {
+        await run(emit);
+      } catch (err) {
+        emit({ type: "error", error: err instanceof Error ? err.message : "Scoring failed." });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
-function packResults(ranked: { listing: PropertyListing; grade: ReturnType<typeof grade> }[]) {
+async function respondRanked(
+  stream: boolean | undefined,
+  listings: PropertyListing[],
+  matrix: UserMatrix,
+  after: (ranked: RankRow[]) => Promise<Record<string, unknown>>
+) {
+  if (!stream) {
+    const ranked = await rankListings(listings, matrix);
+    return NextResponse.json(await after(ranked));
+  }
+  return ndjsonStream(async (emit) => {
+    const ranked = await rankListings(listings, matrix, (p) => {
+      emit({
+        type: "progress",
+        analyzed: p.analyzed,
+        total: p.total,
+        processing: p.processing,
+        results: p.results,
+        totalMatched: p.totalMatched,
+      });
+    });
+    emit({ type: "done", ...(await after(ranked)) });
+  });
+}
+
+function packResults(ranked: RankRow[]) {
   const totalMatched = ranked.length;
   const results = takeTopListings(ranked);
   const clip =
-    totalMatched > TOP_LISTING_COUNT ? ` Showing the top ${results.length} of ${totalMatched} by grade.` : "";
+    totalMatched > TOP_LISTING_COUNT ? ` Showing the top ${results.length} of ${totalMatched} by score.` : "";
   return { results, totalMatched, clip };
 }
 
@@ -93,6 +128,7 @@ export async function POST(request: Request) {
     source?: "favorites" | "rentcast" | "upload" | "live" | "saved" | "regrade";
     draft?: UserMatrix;
     force?: boolean;
+    stream?: boolean;
   };
 
   const matrix = ensureMatrix(body.draft ?? (await loadActiveMatrix(user)));
@@ -104,19 +140,20 @@ export async function POST(request: Request) {
     }
     const filename = body.filename?.trim() || "favorites.csv";
     saveCsvListings(user, parsed, filename);
-    const ranked = await rank(filterList(parsed, body), matrix);
-    await saveSearch(user, { source: "upload", filename }, ranked.map((r) => r.listing.id));
-    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-    const packed = packResults(ranked);
-    const saved = getCsvMeta(user);
-    return NextResponse.json({
-      source: "upload",
-      notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — Re-grade uses it until you upload a new CSV.${packed.clip}`,
-      results: packed.results,
-      totalMatched: packed.totalMatched,
-      saved,
-      quota: getLiveQuota(user.id),
-      cache: getLiveCache(user.id),
+    return respondRanked(body.stream, filterList(parsed, body), matrix, async (ranked) => {
+      await saveSearch(user, { source: "upload", filename }, ranked.map((r) => r.listing.id));
+      for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+      const packed = packResults(ranked);
+      const saved = getCsvMeta(user);
+      return {
+        source: "upload",
+        notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — Run Scoring uses it until you upload a new CSV.${packed.clip}`,
+        results: packed.results,
+        totalMatched: packed.totalMatched,
+        saved,
+        quota: getLiveQuota(user.id),
+        cache: getLiveCache(user.id),
+      };
     });
   }
 
@@ -152,7 +189,7 @@ export async function POST(request: Request) {
           {
             error: accountEmpty
               ? RENTCAST_CAP_MESSAGE
-              : `Beta live-search cap reached (${decision.quota.used}/${decision.quota.userLimit}). Re-grade the cache or wait until next month.`,
+              : `Beta live-search cap reached (${decision.quota.used}/${decision.quota.userLimit}). Run Scoring on the cache or wait until next month.`,
             quota: decision.quota,
             cache: getLiveCache(user.id),
             advice: adviseLiveSearch(user.id, query),
@@ -194,36 +231,37 @@ export async function POST(request: Request) {
       }
       const filtered = filterListingsByQuery(listings, query);
       listings.forEach(rememberListing);
-      const ranked = await rank(filtered, matrix);
-      await saveSearch(user, { source: "live", query, fromCache, pulled }, ranked.map((r) => r.listing.id));
-      for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-      const packed = packResults(ranked);
-      const top = ranked.filter((r) => !r.grade.mustHaveFailed);
-      const advice = adviseLiveSearch(user.id, query);
-      const notice =
-        decision.action === "confirm"
-          ? `${advice.advice} Showing the ${packed.results.length} best of ${packed.totalMatched} cached homes that still fit.`
-          : `${livePullNotice({
-              fromCache,
-              stale: false,
-              pulled,
-              count: packed.totalMatched,
-              fetchedAt: decision.cached?.fetchedAt ?? Date.now(),
-              quota,
-              searchArea: matrix.searchArea,
-            })} ${top.length} pass must-haves.${packed.clip}`;
-      return NextResponse.json({
-        source: pulled ? "rentcast" : "cache",
-        notice,
-        results: packed.results,
-        totalMatched: packed.totalMatched,
-        quota,
-        cache: getLiveCache(user.id),
-        fromCache,
-        pulled,
-        needsConfirm: decision.action === "confirm",
-        advice,
-        saved: getCsvMeta(user),
+      return respondRanked(body.stream, filtered, matrix, async (ranked) => {
+        await saveSearch(user, { source: "live", query, fromCache, pulled }, ranked.map((r) => r.listing.id));
+        for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+        const packed = packResults(ranked);
+        const top = ranked.filter((r) => !r.grade.mustHaveFailed);
+        const advice = adviseLiveSearch(user.id, query);
+        const notice =
+          decision.action === "confirm"
+            ? `${advice.advice} Showing the ${packed.results.length} best of ${packed.totalMatched} cached homes that still fit.`
+            : `${livePullNotice({
+                fromCache,
+                stale: false,
+                pulled,
+                count: packed.totalMatched,
+                fetchedAt: decision.cached?.fetchedAt ?? Date.now(),
+                quota,
+                searchArea: matrix.searchArea,
+              })} ${top.length} pass must-haves.${packed.clip}`;
+        return {
+          source: pulled ? "rentcast" : "cache",
+          notice,
+          results: packed.results,
+          totalMatched: packed.totalMatched,
+          quota,
+          cache: getLiveCache(user.id),
+          fromCache,
+          pulled,
+          needsConfirm: decision.action === "confirm",
+          advice,
+          saved: getCsvMeta(user),
+        };
       });
     });
   }
@@ -246,8 +284,8 @@ export async function POST(request: Request) {
     if (!listings.length) {
       const baseline = baselineStatus(matrix);
       const why = !baseline.complete
-        ? `Nothing to re-grade, and your must-haves are incomplete (${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}).`
-        : "Nothing to re-grade: no live cache and no saved CSV. Upload a Redfin CSV or confirm a live pull first.";
+        ? `Nothing to grade, and your must-haves are incomplete (${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}).`
+        : "Nothing to grade: no live cache and no saved CSV. Upload a Redfin CSV or confirm a live pull first.";
       return NextResponse.json(
         {
           error: why,
@@ -263,30 +301,31 @@ export async function POST(request: Request) {
     const query = queryFromMatrix(matrix);
     const scoped = liveList?.length ? listings : filterList(listings, body);
     const working = filterListingsByQuery(scoped, query);
-    const ranked = await rank(working, matrix);
-    await saveSearch(user, { source: "regrade" }, ranked.map((r) => r.listing.id));
-    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-    const packed = packResults(ranked);
-    const incomplete = ranked.filter((r) => r.grade.band === "incomplete").length;
-    const cache = getLiveCache(user.id);
-    const quota = getLiveQuota(user.id);
-    const from = liveList?.length ? "live cache" : `saved file ${saved?.filename ?? "CSV"}`;
-    const notice =
-      !ranked.length && scoped.length
-        ? matrix.intent === "rent"
-          ? "This list is homes for sale. Confirm a live pull to load rentals (uses 1 of 3), or switch back to Buy."
-          : "No for-sale homes in this list — they look like rentals. Stay on Buy and confirm a live pull, or switch to Rent."
-        : incomplete === ranked.length && ranked.length
-          ? `Re-graded ${ranked.length} homes from ${from}, but every score is incomplete — your must-haves are not set, or listings lack year/type/price.${packed.clip}`
-          : `Re-graded ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.${packed.clip}`;
-    return NextResponse.json({
-      source: liveList?.length ? "cache" : "saved",
-      notice,
-      results: packed.results,
-      totalMatched: packed.totalMatched,
-      quota,
-      cache,
-      saved,
+    return respondRanked(body.stream, working, matrix, async (ranked) => {
+      await saveSearch(user, { source: "regrade" }, ranked.map((r) => r.listing.id));
+      for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+      const packed = packResults(ranked);
+      const incomplete = ranked.filter((r) => r.grade.band === "incomplete").length;
+      const cache = getLiveCache(user.id);
+      const quota = getLiveQuota(user.id);
+      const from = liveList?.length ? "live cache" : `saved file ${saved?.filename ?? "CSV"}`;
+      const notice =
+        !ranked.length && scoped.length
+          ? matrix.intent === "rent"
+            ? "This list is homes for sale. Confirm a live pull to load rentals (uses 1 of 3), or switch back to Buy."
+            : "No for-sale homes in this list — they look like rentals. Stay on Buy and confirm a live pull, or switch to Rent."
+          : incomplete === ranked.length && ranked.length
+            ? `Scored ${ranked.length} homes from ${from}, but every score is incomplete — your must-haves are not set, or listings lack year/type/price.${packed.clip}`
+            : `Scored ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.${packed.clip}`;
+      return {
+        source: liveList?.length ? "cache" : "saved",
+        notice,
+        results: packed.results,
+        totalMatched: packed.totalMatched,
+        quota,
+        cache,
+        saved,
+      };
     });
   }
 
@@ -297,36 +336,38 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    const ranked = await rank(filterList(csv, body), matrix);
-    await saveSearch(user, { source: "saved" }, ranked.map((r) => r.listing.id));
-    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-    const packed = packResults(ranked);
-    return NextResponse.json({
-      source: "saved",
-      notice: `Graded ${packed.totalMatched} homes from saved file ${saved?.filename ?? "your CSV"}.${packed.clip}`,
-      results: packed.results,
-      totalMatched: packed.totalMatched,
-      quota: getLiveQuota(user.id),
-      cache: getLiveCache(user.id),
-      saved,
+    return respondRanked(body.stream, filterList(csv, body), matrix, async (ranked) => {
+      await saveSearch(user, { source: "saved" }, ranked.map((r) => r.listing.id));
+      for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+      const packed = packResults(ranked);
+      return {
+        source: "saved",
+        notice: `Scored ${packed.totalMatched} homes from saved file ${saved?.filename ?? "your CSV"}.${packed.clip}`,
+        results: packed.results,
+        totalMatched: packed.totalMatched,
+        quota: getLiveQuota(user.id),
+        cache: getLiveCache(user.id),
+        saved,
+      };
     });
   }
 
   if (body.source === "favorites") {
     const listings = loadBundledRedfinFavorites();
     listings.forEach(rememberListing);
-    const ranked = await rank(filterList(listings, body), matrix);
-    await saveSearch(user, body, ranked.map((r) => r.listing.id));
-    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
-    const packed = packResults(ranked);
-    return NextResponse.json({
-      source: "redfin-favorites",
-      notice: `Showing ${packed.clip ? `the top ${packed.results.length} of ${packed.totalMatched}` : `${packed.totalMatched}`} homes from the sample Valrico CSV. Your uploaded file is unchanged${saved ? ` (${saved.filename}, ${saved.count} homes)` : ""}.`,
-      results: packed.results,
-      totalMatched: packed.totalMatched,
-      quota: getLiveQuota(user.id),
-      cache: getLiveCache(user.id),
-      saved,
+    return respondRanked(body.stream, filterList(listings, body), matrix, async (ranked) => {
+      await saveSearch(user, body, ranked.map((r) => r.listing.id));
+      for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+      const packed = packResults(ranked);
+      return {
+        source: "redfin-favorites",
+        notice: `Showing ${packed.clip ? `the top ${packed.results.length} of ${packed.totalMatched}` : `${packed.totalMatched}`} homes from the sample Valrico CSV. Your uploaded file is unchanged${saved ? ` (${saved.filename}, ${saved.count} homes)` : ""}.`,
+        results: packed.results,
+        totalMatched: packed.totalMatched,
+        quota: getLiveQuota(user.id),
+        cache: getLiveCache(user.id),
+        saved,
+      };
     });
   }
 

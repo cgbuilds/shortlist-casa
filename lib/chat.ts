@@ -549,7 +549,7 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     liveSearch = true;
     const applied = applyTool(working, "preview_live_search", {}, { userId });
     const advice = applied.result as { advice?: string };
-    notes.push(advice.advice ?? "Re-grading the cached list.");
+    notes.push(advice.advice ?? "Scoring the cached list.");
   } else if (
     userId &&
     /live search|search live|new (live )?search|another search|rentcast/.test(text)

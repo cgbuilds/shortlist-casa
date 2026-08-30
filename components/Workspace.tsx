@@ -10,6 +10,8 @@ import { RedfinUpload } from "@/components/RedfinUpload";
 import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
 import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
+import { postSearch } from "@/lib/search-client";
+import { resultsHeadline, type RankProgress } from "@/lib/rank-listings";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -23,7 +25,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [matrix, setMatrix] = useState(initialMatrix ?? defaultMatrix());
   const [rows, setRows] = useState<Row[]>([]);
   const [totalMatched, setTotalMatched] = useState(0);
-  const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("split");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [liveSearch, setLiveSearch] = useState(false);
@@ -38,8 +39,12 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
   const [chatH, setChatH] = useState(320);
   const [regrading, setRegrading] = useState(false);
+  const [scoreProgress, setScoreProgress] = useState<Pick<RankProgress, "analyzed" | "total" | "processing"> | null>(
+    null
+  );
   const [job, setJob] = useState<{ tone: "busy" | "ok" | "err"; text: string } | null>(null);
   const skipMatrixGrade = useRef(true);
+  const scoreAbort = useRef<AbortController | null>(null);
   const chatDrag = useRef<{ y: number; h: number } | null>(null);
   const chatHRef = useRef(chatH);
   chatHRef.current = chatH;
@@ -81,7 +86,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         if (top[0]) setSelectedId(top[0].listing.id);
       }
     }
-    setNotice(data.notice ?? data.error ?? "");
     if (data.quota) {
       setRemaining(data.quota.remaining);
       setUserLimit(data.quota.userLimit);
@@ -93,28 +97,48 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     applySaved(data.saved);
   }, []);
 
+  const onScoreProgress = useCallback(
+    (p: RankProgress) => {
+      setScoreProgress(p);
+      applyGrade({ results: p.results, totalMatched: p.totalMatched });
+    },
+    [applyGrade]
+  );
+
+  async function runScoring(body: Record<string, unknown>) {
+    scoreAbort.current?.abort();
+    const ac = new AbortController();
+    scoreAbort.current = ac;
+    setScoreProgress({ analyzed: 0, total: totalMatched || 0, processing: 0 });
+    try {
+      const { ok, status, data } = await postSearch(body, { onProgress: onScoreProgress, signal: ac.signal });
+      applyGrade(data);
+      if (!ok) throw new Error(data.error ?? `Scoring failed (${status})`);
+      return data;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return undefined;
+      throw err;
+    } finally {
+      if (scoreAbort.current === ac) {
+        scoreAbort.current = null;
+        setScoreProgress(null);
+      }
+    }
+  }
+
   async function refreshGrades(m?: UserMatrix) {
-    const res = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "regrade", draft: m ?? matrix }),
-    });
-    const data = await res.json();
-    applyGrade(data);
-    if (!res.ok) throw new Error(data.error ?? `Re-grade failed (${res.status})`);
-    return data as { notice?: string };
+    return runScoring({ source: "regrade", draft: m ?? matrix });
   }
 
   async function forceRegrade() {
     setRegrading(true);
-    setJob({ tone: "busy", text: "Re-grading the current list…" });
+    setJob(null);
     try {
-      const data = await refreshGrades();
-      setJob({ tone: "ok", text: data.notice ?? "Re-grade finished." });
+      await refreshGrades();
     } catch (err) {
       setJob({
         tone: "err",
-        text: err instanceof Error ? err.message : "Re-grade failed.",
+        text: err instanceof Error ? err.message : "Scoring failed.",
       });
     } finally {
       setRegrading(false);
@@ -122,12 +146,17 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }
 
   async function runLive(m: UserMatrix, force: boolean) {
-    const res = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "live", draft: m, force }),
-    });
-    applyGrade(await res.json());
+    setRegrading(true);
+    try {
+      await runScoring({ source: "live", draft: m, force });
+    } catch (err) {
+      setJob({
+        tone: "err",
+        text: err instanceof Error ? err.message : "Live search failed.",
+      });
+    } finally {
+      setRegrading(false);
+    }
   }
 
   useEffect(() => {
@@ -178,6 +207,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             matrix={matrix}
             remaining={remaining}
             userLimit={userLimit}
+            scoreProgress={scoreProgress}
             onMatrix={(m, _commit, extra) => {
               persistMatrix(m);
               if (extra?.livePull) void runLive(m, true);
@@ -222,7 +252,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           cacheCount={cacheCount}
           savedFilename={savedFilename}
           savedCount={savedCount}
-          onGraded={(data) => applyGrade(data as Parameters<typeof applyGrade>[0])}
+          onGraded={(data) => {
+            setScoreProgress(null);
+            applyGrade(data as Parameters<typeof applyGrade>[0]);
+          }}
+          onScoreProgress={onScoreProgress}
         />
         <div className="border-t border-[var(--line)] px-3 pb-3">
           <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">
@@ -237,13 +271,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
           <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
-            {rows.length
-              ? totalMatched > rows.length
-                ? `Top ${rows.length} of ${totalMatched} homes`
-                : `${rows.length} home${rows.length === 1 ? "" : "s"}`
-              : "No homes yet"}
-            {matrix.searchArea ? ` · Must-haves: ${matrix.searchArea}` : " · No must-haves saved yet"}
-            {notice ? ` · ${notice}` : ""}
+            {resultsHeadline(rows.length, totalMatched)}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -253,7 +281,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
               title="Score the current list again. Does not spend a live search."
               onClick={() => void forceRegrade()}
             >
-              {regrading ? "Re-grading…" : "Re-grade list"}
+              {regrading ? "Scoring…" : "Run Scoring"}
             </button>
             <div className="flex rounded-lg border border-[var(--line)] text-sm">
             <button
@@ -273,16 +301,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             </div>
           </div>
         </div>
-        {job ? (
-          <p
-            className={`border-b border-[var(--line)] px-3 py-2 text-sm ${
-              job.tone === "err"
-                ? "bg-red-50 text-red-800"
-                : job.tone === "busy"
-                  ? "bg-[var(--paper-2)] text-[var(--ink)]"
-                  : "bg-[color-mix(in_oklab,var(--accent)_12%,var(--paper))] text-[var(--ink)]"
-            }`}
-          >
+        {job?.tone === "err" ? (
+          <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">
             {job.text}
           </p>
         ) : null}

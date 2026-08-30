@@ -7,6 +7,7 @@ const OVERPASS_URLS = [
 
 type AmenityCounts = { cafes: number; shops: number };
 
+const inflight = new Map<string, Promise<AmenityCounts>>();
 const cache = new Map<string, AmenityCounts>();
 
 export function cellKey(lat: number, lng: number) {
@@ -70,6 +71,28 @@ out tags;`;
   throw lastErr instanceof Error ? lastErr : new Error("Overpass failed");
 }
 
+async function countsForCell(lat: number, lng: number): Promise<AmenityCounts> {
+  const key = cellKey(lat, lng);
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const work = overpassCounts(lat, lng)
+    .then((counts) => {
+      cache.set(key, counts);
+      inflight.delete(key);
+      return counts;
+    })
+    .catch(() => {
+      const empty = { cafes: -1, shops: -1 };
+      cache.set(key, empty);
+      inflight.delete(key);
+      return empty;
+    });
+  inflight.set(key, work);
+  return work;
+}
+
 export async function enrichListingsForMatrix(
   listings: PropertyListing[],
   matrix: UserMatrix
@@ -78,18 +101,15 @@ export async function enrichListingsForMatrix(
   const keys = new Set<string>();
   for (const l of listings) {
     if (l.latitude == null || l.longitude == null) continue;
-    const key = cellKey(l.latitude, l.longitude);
-    if (!cache.has(key)) keys.add(key);
+    keys.add(cellKey(l.latitude, l.longitude));
   }
-  const toFetch = [...keys].slice(0, 8);
-  for (const key of toFetch) {
-    const [lat, lng] = key.split(",").map(Number);
-    try {
-      cache.set(key, await overpassCounts(lat, lng));
-    } catch {
-      cache.set(key, { cafes: -1, shops: -1 });
-    }
-  }
+  const toFetch = [...keys].slice(0, 12);
+  await Promise.all(
+    toFetch.map(async (key) => {
+      const [lat, lng] = key.split(",").map(Number);
+      await countsForCell(lat, lng);
+    })
+  );
   return listings.map((l) => {
     if (l.latitude == null || l.longitude == null) return l;
     const counts = cache.get(cellKey(l.latitude, l.longitude));

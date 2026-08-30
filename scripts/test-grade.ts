@@ -10,6 +10,7 @@ import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
 import { queryFromMatrix } from "../lib/rentcast";
 import { inferVibe } from "../lib/osm-amenities";
+import { rankListings, resultsHeadline, scoreStatusLabel } from "../lib/rank-listings";
 import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP, filterListingsByQuery, grantCourtesySearch, isPoliteExtraSearchAsk } from "../lib/listing-cache";
 import { outboundListingLinks } from "../lib/outbound-links";
 
@@ -304,6 +305,20 @@ async function main() {
 
   const rentChat = await runMatrixChat(matrix, [], "I want to rent a condo");
   assert(rentChat.matrix.intent === "rent", "chat can switch to rent");
+
+  assert(resultsHeadline(10, 50) === "Showing the top 10 of 50 by score", "list header is top N of M by score");
+  assert(resultsHeadline(8, 8) === "Showing 8 by score", "short list has no top-N clip");
+  assert(resultsHeadline(0, 0) === "No homes yet", "empty list header");
+
+  const ticks: { analyzed: number; processing: number; totalMatched: number }[] = [];
+  const batch = await rankListings(favorites.slice(0, 7), matrix, (p) => {
+    ticks.push({ analyzed: p.analyzed, processing: p.processing, totalMatched: p.totalMatched });
+  });
+  assert(batch.length === 7, "rankListings scores every home");
+  assert(ticks[0]?.analyzed === 0, "progress starts at 0 scored");
+  assert(ticks.at(-1)?.analyzed === 7 && ticks.at(-1)?.processing === 0, "progress ends when all are scored");
+  assert(ticks.every((t) => t.totalMatched === 7), "header total stays the full list size while scoring");
+  assert(scoreStatusLabel({ analyzed: 20, total: 23, processing: 3 }) === "20/23 scored, 3 processing…", "scoring status copy");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,

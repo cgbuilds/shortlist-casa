@@ -11,7 +11,7 @@ export default async function HomePage() {
       <div>
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--muted)]">Homestead Matrix</p>
         <h1 className="mt-3 font-[family-name:var(--font-display)] text-5xl leading-tight">
-          Grade listings against must-haves you set in chat.
+          Score listings against must-haves you set in chat.
         </h1>
         <p className="mt-4 max-w-md text-[var(--muted)]">
           Categories come from a knowledge base (structure, seller motivation, PITIA slack, school area).
