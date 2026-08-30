@@ -4,7 +4,7 @@ import { join } from "path";
 import { defaultMatrix } from "../kb/catalog";
 import { SEED_LISTINGS } from "../data/listings";
 import { runMatrixChat } from "../lib/chat";
-import { bandFor, grade, gradeCaption, takeTopListings, wordCount } from "../lib/grade";
+import { bandFor, grade, gradeCaption, explainGrade, takeTopListings, wordCount } from "../lib/grade";
 import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
@@ -42,7 +42,6 @@ async function main() {
   assert(g.incompleteReason, "incomplete explains why");
   assert(g.why && wordCount(g.why) > 15, "grade why is more than 15 words");
   assert(!/because the overall score is/i.test(g.why), "why is not circular about the score");
-  assert(/What works:/i.test(g.why) && /What doesn't:/i.test(g.why), "why uses the strengths/tradeoffs template");
   assert(takeTopListings(Array.from({ length: 14 }, (_, i) => i)).length === 10, "list is capped at 10");
 
   const constructionOn = ensureMatrix({
@@ -57,6 +56,30 @@ async function main() {
   assert(fail.mustHaveFailed, "frame fails block must-have");
   assert(fail.why && wordCount(fail.why) > 15, "miss grade why is more than 15 words");
   assert(!/because the overall score is/i.test(fail.why), "miss why is not circular");
+
+  const whyDims = [
+    { id: "baths", label: "Baths", enabled: true, weight: 8, score: 100, unknown: false, mustHaveFailed: false, reason: "2.5 baths (min 2)" },
+    { id: "walkable", label: "Walkable", enabled: true, weight: 8, score: 100, unknown: false, mustHaveFailed: false, reason: "Walkable (3 cafés, 8 shops nearby)" },
+    { id: "school_area", label: "Area", enabled: true, weight: 8, score: 20, unknown: false, mustHaveFailed: false, reason: "HEATHER BAY CONDO TWNHMS is outside named neighborhoods" },
+    { id: "property_type", label: "Type", enabled: true, weight: 10, score: 40, unknown: false, mustHaveFailed: false, reason: "townhouse (prefer condo)" },
+  ];
+  const whyOpts = { band: "good" as const, total: 74, mustHaveFailed: false, perDimension: whyDims };
+  const whyLorraine = explainGrade(
+    { ...sample, id: "lorraine", address: "429 Lorraine Leland St", city: "Dunedin", beds: 2, listPrice: 262500, facts: { ...sample.facts, propertyType: "townhouse" } },
+    whyOpts
+  );
+  const whyLusara = explainGrade(
+    { ...sample, id: "lusara", address: "553 Lusara Ct", city: "Dunedin", beds: 2, listPrice: 359000, facts: { ...sample.facts, propertyType: "townhouse" } },
+    whyOpts
+  );
+  assert(whyLorraine !== whyLusara, "similar homes get different blurbs");
+  assert(
+    explainGrade(
+      { ...sample, id: "lorraine", address: "429 Lorraine Leland St", city: "Dunedin", beds: 2, listPrice: 262500, facts: { ...sample.facts, propertyType: "townhouse" } },
+      whyOpts
+    ) === whyLorraine,
+    "blurb is stable for the same listing"
+  );
 
   const parsed = parseAddressFromInput(
     "https://www.zillow.com/homedetails/5913-Flatwoods-Manor-Cir-Lithia-FL-33547/123_zpid/"
