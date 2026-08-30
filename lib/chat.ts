@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { baselineStatus } from "@/kb/catalog";
-import { adviseLiveSearch } from "@/lib/listing-cache";
+import { adviseLiveSearch, grantCourtesySearch, getLiveQuota, isPoliteExtraSearchAsk } from "@/lib/listing-cache";
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { queryFromMatrix } from "@/lib/rentcast";
 import type { UserMatrix } from "@/lib/types";
@@ -35,7 +35,8 @@ Format replies as markdown with **bold** labels and dash lists.
 Keep replies short. After tools, recap what is set and what baseline is still missing.
 When baseline is complete AND the user confirms, call commit_matrix. Tell them their must-haves are saved — never say matrix.
 
-LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-grades the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.`;
+LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-grades the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.
+If they want more than 3 live searches, tell them to re-grade the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -115,6 +116,17 @@ export async function runMatrixChat(
 ): Promise<ChatResult> {
   const started = Date.now();
   const info = chatProviderInfo();
+  if (opts?.userId && isPoliteExtraSearchAsk(userText)) {
+    const fallback = heuristicChat(matrix, userText, history, opts.userId);
+    return {
+      ...fallback,
+      provider: "heuristic",
+      model: "built-in",
+      label: "Built-in coach",
+      toolRounds: 0,
+      elapsedMs: Date.now() - started,
+    };
+  }
   const liveAdvice = opts?.userId ? adviseLiveSearch(opts.userId, queryFromMatrix(matrix)) : null;
   const llm = getLlmClient();
   if (!llm) {
@@ -506,7 +518,18 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     notes.push("Updated PITIA / monthly slack targets.");
   }
 
-  if (userId && wantsLiveConfirm(text, history)) {
+  if (userId && isPoliteExtraSearchAsk(userText)) {
+    grantCourtesySearch(userId);
+    const quota = getLiveQuota(userId);
+    if (quota.remaining > 0 && quota.globalRemaining > 0) {
+      livePull = true;
+      notes.push("Running another live search.");
+    } else {
+      const applied = applyTool(working, "preview_live_search", {}, { userId });
+      const advice = applied.result as { advice?: string };
+      notes.push(advice.advice ?? "Live search is at the monthly cap.");
+    }
+  } else if (userId && wantsLiveConfirm(text, history)) {
     const applied = applyTool(working, "run_live_search", { confirm: true }, { userId });
     livePull = Boolean(applied.livePull);
     liveSearch = Boolean(applied.liveSearch);

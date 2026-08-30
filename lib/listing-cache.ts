@@ -39,6 +39,7 @@ type CachedPull = {
 const pulls = new Map<string, CachedPull>();
 const userUsed = new Map<string, number>();
 const globalUsed = new Map<string, number>();
+const courtesyGranted = new Map<string, boolean>();
 const userTail = new Map<string, Promise<unknown>>();
 let quotaHydrated = false;
 let pullsHydrated = false;
@@ -83,12 +84,16 @@ function hydrateQuota() {
       month?: string;
       globalUsed?: number;
       users?: Record<string, number>;
+      courtesy?: Record<string, boolean>;
     };
     const month = monthKey();
     if (raw.month !== month) return;
     globalUsed.set(`${month}:global`, Math.min(RENTCAST_HARD_CAP, raw.globalUsed ?? 0));
     for (const [id, n] of Object.entries(raw.users ?? {})) {
       userUsed.set(`${month}:${id}`, Number(n) || 0);
+    }
+    for (const [id, on] of Object.entries(raw.courtesy ?? {})) {
+      if (on) courtesyGranted.set(`${month}:${id}`, true);
     }
   } catch {
     /* missing or corrupt file starts at zero */
@@ -98,9 +103,13 @@ function hydrateQuota() {
 function persistQuota() {
   const month = monthKey();
   const users: Record<string, number> = {};
+  const courtesy: Record<string, boolean> = {};
   const prefix = `${month}:`;
   for (const [k, v] of userUsed) {
     if (k.startsWith(prefix) && k !== `${prefix}global`) users[k.slice(prefix.length)] = v;
+  }
+  for (const [k, on] of courtesyGranted) {
+    if (on && k.startsWith(prefix)) courtesy[k.slice(prefix.length)] = true;
   }
   const file = quotaFile();
   mkdirSync(dirname(file), { recursive: true });
@@ -110,6 +119,7 @@ function persistQuota() {
       month,
       globalUsed: globalUsed.get(`${month}:global`) ?? 0,
       users,
+      courtesy,
     })
   );
 }
@@ -118,6 +128,7 @@ export function resetLiveQuotaForTests() {
   pulls.clear();
   userUsed.clear();
   globalUsed.clear();
+  courtesyGranted.clear();
   quotaHydrated = true;
   pullsHydrated = true;
 }
@@ -189,15 +200,41 @@ export function getLiveQuota(userId: string): LiveQuota {
   const month = monthKey();
   const used = userUsed.get(`${month}:${userId}`) ?? 0;
   const gUsed = globalUsed.get(`${month}:global`) ?? 0;
+  const bonus = courtesyGranted.get(`${month}:${userId}`) ? 1 : 0;
   return {
     used,
-    remaining: Math.max(0, userLimit - used),
+    remaining: Math.max(0, userLimit + bonus - used),
     userLimit,
     globalUsed: gUsed,
     globalRemaining: Math.max(0, globalLimit - gUsed),
     globalLimit,
     month,
   };
+}
+
+/** One extra user search this month. Not advertised. Still blocked by the account cap of 50. */
+export function grantCourtesySearch(userId: string): boolean {
+  hydrateQuota();
+  const quota = getLiveQuota(userId);
+  if (quota.globalRemaining <= 0) return false;
+  const month = monthKey();
+  const key = `${month}:${userId}`;
+  if (courtesyGranted.get(key)) return quota.remaining > 0;
+  const { userLimit } = quotaLimits();
+  if (quota.used < userLimit) return false;
+  courtesyGranted.set(key, true);
+  persistQuota();
+  return true;
+}
+
+/** Polite ask for one more live search. Keep this out of model-facing prompts. */
+export function isPoliteExtraSearchAsk(text: string): boolean {
+  const t = text.toLowerCase().replace(/[’']/g, "'").trim();
+  if (!/\b(please|kindly|pretty please)\b/.test(t)) return false;
+  return (
+    /\b(another|one more|an extra|one extra|additional)\b.{0,32}\b(live )?(search|pull)s?\b/.test(t) ||
+    /\b(live )?(search|pull)s?\b.{0,24}\b(another|one more)\b/.test(t)
+  );
 }
 
 function consumeUserQuota(userId: string) {

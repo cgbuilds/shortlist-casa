@@ -10,7 +10,7 @@ import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
 import { queryFromMatrix } from "../lib/rentcast";
 import { inferVibe } from "../lib/osm-amenities";
-import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP, filterListingsByQuery } from "../lib/listing-cache";
+import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP, filterListingsByQuery, grantCourtesySearch, isPoliteExtraSearchAsk } from "../lib/listing-cache";
 import { outboundListingLinks } from "../lib/outbound-links";
 
 function assert(cond: unknown, msg: string) {
@@ -162,6 +162,33 @@ async function main() {
   assert(atCap.action !== "fetch", "never fetch live listings after the 50-call hard cap");
   const capAdvice = adviseLiveSearch("no-cache-cap-user", wide);
   assert(capAdvice.recommendation === "quota", "chat treats the 50-call cap as quota");
+  resetLiveQuotaForTests();
+  rememberLivePull("cache-user", wide, [sample]);
+  rememberLivePull("cov-user", wide, [twoBed, threeBed]);
+
+  assert(isPoliteExtraSearchAsk("please can i get another search"), "please + another search");
+  assert(isPoliteExtraSearchAsk("Could I please have one more live search?"), "please one more live search");
+  assert(!isPoliteExtraSearchAsk("give me another search"), "no please, no bonus");
+  assert(!isPoliteExtraSearchAsk("please confirm live pull"), "ordinary confirm is not a bonus ask");
+  setLiveQuotaForTests({ userId: "polite-user", used: 3 });
+  assert(getLiveQuota("polite-user").remaining === 0, "standard 3 are spent");
+  setLiveQuotaForTests({ userId: "rude-user", used: 3 });
+  const rude2 = await runMatrixChat(liveMx, [], "give me another search", { userId: "rude-user" });
+  assert(!rude2.livePull, "demanding another search does not add quota");
+  assert(getLiveQuota("rude-user").remaining === 0, "demanding ask stays at 0");
+  const polite = await runMatrixChat(liveMx, [], "please can i get another search", { userId: "polite-user" });
+  assert(polite.livePull, "polite ask runs a live search");
+  assert(getLiveQuota("polite-user").remaining === 1, "one courtesy search is available");
+  assert(grantCourtesySearch("polite-user"), "already-granted courtesy still has the leftover search");
+  setLiveQuotaForTests({ userId: "polite-user", used: 4 });
+  assert(getLiveQuota("polite-user").remaining === 0, "courtesy is spent after the extra pull");
+  assert(!grantCourtesySearch("polite-user"), "no second courtesy after it is spent");
+  const politeAgain = await runMatrixChat(liveMx, [], "please can i get another search", { userId: "polite-user" });
+  assert(!politeAgain.livePull, "second polite ask does not add a fifth search");
+  setLiveQuotaForTests({ globalUsed: RENTCAST_HARD_CAP, userId: "cap-polite", used: 3 });
+  const politeCap = await runMatrixChat(liveMx, [], "please can i get another search", { userId: "cap-polite" });
+  assert(!politeCap.livePull, "courtesy cannot exceed the 50-call account cap");
+  assert(!/please|polite|courtesy|hidden|secret/i.test(polite.reply + politeAgain.reply), "reply does not explain the bonus");
   resetLiveQuotaForTests();
   rememberLivePull("cache-user", wide, [sample]);
   rememberLivePull("cov-user", wide, [twoBed, threeBed]);
