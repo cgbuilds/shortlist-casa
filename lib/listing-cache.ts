@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { dirname, join } from "path";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+import { dataDir, writeJsonFile } from "@/lib/data-dir";
 import { listingMarket } from "@/lib/listing-market";
 import type { PropertyListing } from "@/lib/types";
 import type { SearchQuery } from "@/lib/rentcast";
@@ -46,7 +47,7 @@ let pullsHydrated = false;
 
 function cacheFile() {
   if (process.env.RENTCAST_QUOTA_FILE) return `${process.env.RENTCAST_QUOTA_FILE}.cache.json`;
-  return join(process.cwd(), ".data", "live-cache.json");
+  return join(dataDir(), "live-cache.json");
 }
 
 function hydratePulls() {
@@ -66,13 +67,11 @@ function hydratePulls() {
 function persistPulls() {
   const out: Record<string, CachedPull> = {};
   for (const [id, row] of pulls) out[id] = row;
-  const file = cacheFile();
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(out));
+  writeJsonFile(cacheFile(), out);
 }
 
 function quotaFile() {
-  return process.env.RENTCAST_QUOTA_FILE || join(process.cwd(), ".data", "rentcast-quota.json");
+  return process.env.RENTCAST_QUOTA_FILE || join(dataDir(), "rentcast-quota.json");
 }
 
 function hydrateQuota() {
@@ -111,17 +110,12 @@ function persistQuota() {
   for (const [k, on] of courtesyGranted) {
     if (on && k.startsWith(prefix)) courtesy[k.slice(prefix.length)] = true;
   }
-  const file = quotaFile();
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(
-    file,
-    JSON.stringify({
-      month,
-      globalUsed: globalUsed.get(`${month}:global`) ?? 0,
-      users,
-      courtesy,
-    })
-  );
+  writeJsonFile(quotaFile(), {
+    month,
+    globalUsed: globalUsed.get(`${month}:global`) ?? 0,
+    users,
+    courtesy,
+  });
 }
 
 export function resetLiveQuotaForTests() {

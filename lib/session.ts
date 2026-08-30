@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { dataDir, writeJsonFile } from "@/lib/data-dir";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { ensureMatrix } from "@/lib/matrix-tools";
@@ -26,7 +27,7 @@ type SavedCsv = SavedCsvMeta & { listings: PropertyListing[] };
 
 function csvFile(userId: string) {
   const safe = userId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "user";
-  return join(process.cwd(), ".data", `csv-${safe}.json`);
+  return join(dataDir(), `csv-${safe}.json`);
 }
 
 function hydrateCsv(userId: string): SavedCsv | null {
@@ -46,9 +47,7 @@ function hydrateCsv(userId: string): SavedCsv | null {
 
 function persistCsv(userId: string, row: SavedCsv) {
   memoryCsv.set(userId, row);
-  const file = csvFile(userId);
-  mkdirSync(join(process.cwd(), ".data"), { recursive: true });
-  writeFileSync(file, JSON.stringify(row));
+  writeJsonFile(csvFile(userId), row);
 }
 
 export function saveCsvListings(user: SessionUser, listings: PropertyListing[], filename: string) {
@@ -88,7 +87,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
 function matrixFile(userId: string) {
   const safe = userId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "user";
-  return join(process.cwd(), ".data", `matrix-${safe}.json`);
+  return join(dataDir(), `matrix-${safe}.json`);
 }
 
 function hydrateMatrix(userId: string): UserMatrix | undefined {
@@ -108,8 +107,7 @@ function hydrateMatrix(userId: string): UserMatrix | undefined {
 
 function persistMatrix(userId: string, matrix: UserMatrix) {
   memoryMatrices.set(userId, matrix);
-  mkdirSync(join(process.cwd(), ".data"), { recursive: true });
-  writeFileSync(matrixFile(userId), JSON.stringify(matrix));
+  writeJsonFile(matrixFile(userId), matrix);
 }
 
 export async function loadActiveMatrix(user: SessionUser): Promise<UserMatrix> {
