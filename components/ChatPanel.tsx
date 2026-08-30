@@ -10,7 +10,7 @@ const DEFAULT_MESSAGES: ChatMessage[] = [
   {
     role: "assistant",
     content:
-      "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. We look for homes to buy unless you switch to rent. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
+      "You’re looking at a starter Tampa list (3 bed, 2 bath, single-family). Tell me what to change — area, beds, budget, walkable, flood — and I’ll update the list and scores.",
   },
 ];
 
@@ -158,7 +158,7 @@ export function ChatPanel({
         {error && !pending ? <p className="text-xs text-[var(--muted)]">{error}</p> : null}
         {committed ? (
           <p className="text-xs text-[var(--accent)]">
-            Must-haves saved. Upload a CSV below — homes will score on this page.
+            Must-haves saved. The map and list will rescore.
           </p>
         ) : null}
       </div>

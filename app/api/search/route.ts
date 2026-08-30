@@ -355,6 +355,9 @@ export async function POST(request: Request) {
   if (body.source === "favorites") {
     const listings = loadBundledRedfinFavorites();
     listings.forEach(rememberListing);
+    if (!getUserListings(user).length) {
+      saveCsvListings(user, listings, "starter-tampa.csv");
+    }
     return respondRanked(body.stream, filterList(listings, body), matrix, async (ranked) => {
       await saveSearch(user, body, ranked.map((r) => r.listing.id));
       for (const row of ranked) await saveGrade(user, row.listing, row.grade);

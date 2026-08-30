@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
 import { ChatPanel } from "@/components/ChatPanel";
+import { ChatFab, ChatSheet } from "@/components/ChatSheet";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
 import { RedfinUpload } from "@/components/RedfinUpload";
@@ -11,7 +12,7 @@ import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
 import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
 import { postSearch } from "@/lib/search-client";
-import { resultsHeadline, type RankProgress } from "@/lib/rank-presentation";
+import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -19,13 +20,12 @@ const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m
 });
 
 type Row = { listing: PropertyListing; grade: GradeResult };
-type View = "list" | "split";
+const BANNER_KEY = "homestead-starter-banner-dismissed";
 
 export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [matrix, setMatrix] = useState(initialMatrix ?? defaultMatrix());
   const [rows, setRows] = useState<Row[]>([]);
   const [totalMatched, setTotalMatched] = useState(0);
-  const [view, setView] = useState<View>("split");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [liveSearch, setLiveSearch] = useState(false);
   const [signupUrl, setSignupUrl] = useState("https://www.rentcast.io/api");
@@ -37,22 +37,18 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [cacheCount, setCacheCount] = useState(0);
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
-  const [chatH, setChatH] = useState(320);
-  const [mobilePane, setMobilePane] = useState<"homes" | "chat">("homes");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [showBanner, setShowBanner] = useState(true);
   const [regrading, setRegrading] = useState(false);
   const [scoreProgress, setScoreProgress] = useState<Pick<RankProgress, "analyzed" | "total" | "processing"> | null>(
     null
   );
-  const [job, setJob] = useState<{ tone: "busy" | "ok" | "err"; text: string } | null>(null);
+  const [job, setJob] = useState<{ tone: "err"; text: string } | null>(null);
   const skipMatrixGrade = useRef(true);
   const scoreAbort = useRef<AbortController | null>(null);
-  const chatDrag = useRef<{ y: number; h: number } | null>(null);
-  const chatHRef = useRef(chatH);
-  chatHRef.current = chatH;
 
   useEffect(() => {
-    const stored = Number(window.sessionStorage.getItem("homestead-chat-h"));
-    if (Number.isFinite(stored) && stored >= 160) setChatH(stored);
+    if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
   }, []);
 
   const persistMatrix = (m: UserMatrix) => {
@@ -131,26 +127,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     return runScoring({ source: "regrade", draft: m ?? matrix });
   }
 
-  async function forceRegrade() {
-    setRegrading(true);
-    setJob(null);
-    try {
-      await refreshGrades();
-    } catch (err) {
-      setJob({
-        tone: "err",
-        text: err instanceof Error ? err.message : "Scoring failed.",
-      });
-    } finally {
-      setRegrading(false);
-    }
-  }
-
   async function runLive(m: UserMatrix, force: boolean) {
     setRegrading(true);
     try {
-      const data = await runScoring({ source: "live", draft: m, force });
-      if (data?.results?.length) setMobilePane("homes");
+      await runScoring({ source: "live", draft: m, force });
     } catch (err) {
       setJob({
         tone: "err",
@@ -187,7 +167,23 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         }
       })
       .catch(() => undefined);
-    void refreshGrades().catch(() => undefined);
+
+    void (async () => {
+      try {
+        const data = await refreshGrades();
+        if (data?.results?.length) return;
+      } catch {
+        /* no saved list yet */
+      }
+      try {
+        await runScoring({ source: "favorites", draft: matrix });
+      } catch (err) {
+        setJob({
+          tone: "err",
+          text: err instanceof Error ? err.message : "Could not load starter homes.",
+        });
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -201,179 +197,113 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matrix]);
 
+  const progressLine = scoreProgress && scoreProgress.total > 0 ? scoreStatusLabel(scoreProgress) : "";
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-      <aside
-        className={`min-h-0 w-full flex-col border-[var(--line)] ${
-          mobilePane === "chat" ? "flex flex-1" : "hidden"
-        } lg:flex lg:h-full lg:w-[22rem] lg:flex-none lg:border-r xl:w-[26rem]`}
-      >
-        <div
-          className="flex min-h-0 flex-1 flex-col lg:h-[var(--chat-h)] lg:flex-none lg:shrink-0"
-          style={{ ["--chat-h" as string]: `${chatH}px` } as React.CSSProperties}
-        >
-          <ChatPanel
-            matrix={matrix}
-            remaining={remaining}
-            userLimit={userLimit}
-            scoreProgress={scoreProgress}
-            onMatrix={(m, _commit, extra) => {
-              persistMatrix(m);
-              if (extra?.livePull) void runLive(m, true);
-              else if (extra?.liveSearch) void runLive(m, false);
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {showBanner ? (
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm">
+          <p className="min-w-0 text-[var(--ink)]">
+            Starter homes are on the map.{" "}
+            <button type="button" className="font-medium underline" onClick={() => setChatOpen(true)}>
+              Talk to the agent
+            </button>{" "}
+            to update this list and the scores.
+            {progressLine ? <span className="mt-0.5 block text-xs text-[var(--muted)]">{progressLine}</span> : null}
+          </p>
+          <button
+            type="button"
+            className="shrink-0 text-xs text-[var(--muted)]"
+            onClick={() => {
+              setShowBanner(false);
+              window.sessionStorage.setItem(BANNER_KEY, "1");
             }}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : progressLine ? (
+        <p className="shrink-0 border-b border-[var(--line)] px-3 py-1.5 text-xs text-[var(--muted)]">{progressLine}</p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
+        <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">{resultsHeadline(rows.length, totalMatched)}</p>
+        {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
+      </div>
+      {job?.tone === "err" ? (
+        <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">{job.text}</p>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div className="relative min-h-[12rem] min-w-0 flex-[1.2] overflow-hidden">
+          <ResultsMap
+            rows={rows}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            layoutTick={chatOpen ? "chat" : "map"}
           />
         </div>
-        <div
-          role="separator"
-          aria-label="Drag to expand chat"
-          title="Drag to expand chat"
-          className="hidden h-3 shrink-0 cursor-ns-resize items-center justify-center border-y border-[var(--line)] bg-[var(--paper-2)] hover:bg-[var(--line)] lg:flex"
-          onPointerDown={(e) => {
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
-            chatDrag.current = { y: e.clientY, h: chatH };
-          }}
-          onPointerMove={(e) => {
-            if (!chatDrag.current) return;
-            const max = Math.round(window.innerHeight * 0.75);
-            const next = Math.min(max, Math.max(160, chatDrag.current.h + (e.clientY - chatDrag.current.y)));
-            setChatH(next);
-          }}
-          onPointerUp={() => {
-            chatDrag.current = null;
-            window.sessionStorage.setItem("homestead-chat-h", String(chatHRef.current));
-          }}
-        >
-          <span className="block h-0.5 w-10 rounded-full bg-[var(--muted)]" />
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <RedfinUpload
-          compact
-          heading="Actions"
-          matrix={matrix}
-          liveSearch={liveSearch}
-          signupUrl={signupUrl}
-          remaining={remaining}
-          userLimit={userLimit}
-          globalRemaining={globalRemaining}
-          globalUsed={globalUsed}
-          globalLimit={globalLimit}
-          cacheCount={cacheCount}
-          savedFilename={savedFilename}
-          savedCount={savedCount}
-          onGraded={(data) => {
-            setScoreProgress(null);
-            applyGrade(data as Parameters<typeof applyGrade>[0]);
-            if (Array.isArray(data.results) && data.results.length) setMobilePane("homes");
-          }}
-          onScoreProgress={onScoreProgress}
-        />
-        <div className="border-t border-[var(--line)] px-3 pb-3">
-          <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">
-            <div className="max-h-80 overflow-y-auto">
-              <MatrixPreview matrix={matrix} />
-            </div>
-          </Fold>
-        </div>
-        </div>
-      </aside>
-
-      <section
-        className={`min-h-0 min-w-0 flex-col ${
-          mobilePane === "homes" ? "flex flex-1" : "hidden"
-        } lg:flex lg:flex-1`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
-          <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">
-            {resultsHeadline(rows.length, totalMatched)}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
-              disabled={regrading}
-              title="Score the current list again. Does not spend a live search."
-              onClick={() => void forceRegrade()}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 md:w-[22rem] md:flex-none md:shrink-0 xl:w-[26rem]">
+          {rows.map((row) => (
+            <div
+              key={row.listing.id}
+              onClick={() => setSelectedId(row.listing.id)}
+              className={row.listing.id === selectedId ? "rounded-2xl ring-2 ring-[var(--accent)]" : ""}
             >
-              {regrading ? "Scoring…" : "Run Scoring"}
-            </button>
-            <div className="flex rounded-lg border border-[var(--line)] text-sm">
-            <button
-              type="button"
-              className={`px-3 py-1.5 ${view === "list" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
-              onClick={() => setView("list")}
-            >
-              List
-            </button>
-            <button
-              type="button"
-              className={`px-3 py-1.5 ${view === "split" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
-              onClick={() => setView("split")}
-            >
-              <span className="lg:hidden">Map</span>
-              <span className="hidden lg:inline">List + map</span>
-            </button>
+              <PropertyCard listing={row.listing} grade={row.grade} />
             </div>
-          </div>
-        </div>
-        {job?.tone === "err" ? (
-          <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">
-            {job.text}
-          </p>
-        ) : null}
-
-        <div className={`min-h-0 flex-1 ${view === "split" ? "flex flex-col md:flex-row" : "overflow-y-auto"}`}>
-          {view === "split" ? (
-            <div className="relative min-h-[11rem] min-w-0 flex-[1.15] overflow-hidden md:h-auto md:flex-1">
-              <ResultsMap
-                rows={rows}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                layoutTick={`${mobilePane}-${view}`}
-              />
-            </div>
+          ))}
+          {rows.length === 0 ? (
+            <p className="text-sm text-[var(--muted)]">
+              Loading starter homes… If nothing appears, open chat and ask for a Tampa list.
+            </p>
           ) : null}
-          <div
-            className={`space-y-3 overflow-y-auto p-3 ${
-              view === "split" ? "min-h-0 flex-1 md:w-[22rem] md:flex-none md:shrink-0 xl:w-[26rem]" : ""
-            }`}
-          >
-            {rows.map((row) => (
-              <div
-                key={row.listing.id}
-                onClick={() => setSelectedId(row.listing.id)}
-                className={row.listing.id === selectedId ? "rounded-2xl ring-2 ring-[var(--accent)]" : ""}
-              >
-                <PropertyCard listing={row.listing} grade={row.grade} />
-              </div>
-            ))}
-            {rows.length === 0 ? (
-              <p className="text-sm text-[var(--muted)]">
-                Set area, beds, baths, and type in chat, then Pull live listings — or upload a Redfin CSV.
-              </p>
-            ) : null}
-          </div>
         </div>
-      </section>
       </div>
 
-      <nav className="relative z-20 grid shrink-0 grid-cols-2 border-t border-[var(--line)] bg-[var(--paper-2)] pb-[env(safe-area-inset-bottom)] lg:hidden">
-        <button
-          type="button"
-          className={`px-3 py-2.5 text-sm ${mobilePane === "homes" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
-          onClick={() => setMobilePane("homes")}
-        >
-          Homes
-        </button>
-        <button
-          type="button"
-          className={`px-3 py-2.5 text-sm ${mobilePane === "chat" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
-          onClick={() => setMobilePane("chat")}
-        >
-          Chat
-        </button>
-      </nav>
+      {chatOpen ? null : <ChatFab onClick={() => setChatOpen(true)} />}
+      <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)}>
+        <ChatPanel
+          matrix={matrix}
+          remaining={remaining}
+          userLimit={userLimit}
+          scoreProgress={scoreProgress}
+          onMatrix={(m, _commit, extra) => {
+            persistMatrix(m);
+            if (extra?.livePull) void runLive(m, true);
+            else if (extra?.liveSearch) void runLive(m, false);
+          }}
+        />
+        <div className="max-h-40 shrink-0 overflow-y-auto border-t border-[var(--line)]">
+          <RedfinUpload
+            compact
+            heading="Actions"
+            matrix={matrix}
+            liveSearch={liveSearch}
+            signupUrl={signupUrl}
+            remaining={remaining}
+            userLimit={userLimit}
+            globalRemaining={globalRemaining}
+            globalUsed={globalUsed}
+            globalLimit={globalLimit}
+            cacheCount={cacheCount}
+            savedFilename={savedFilename}
+            savedCount={savedCount}
+            onGraded={(data) => {
+              setScoreProgress(null);
+              applyGrade(data as Parameters<typeof applyGrade>[0]);
+            }}
+            onScoreProgress={onScoreProgress}
+          />
+          <div className="border-t border-[var(--line)] px-3 pb-3">
+            <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">
+              <div className="max-h-40 overflow-y-auto">
+                <MatrixPreview matrix={matrix} />
+              </div>
+            </Fold>
+          </div>
+        </div>
+      </ChatSheet>
     </div>
   );
 }

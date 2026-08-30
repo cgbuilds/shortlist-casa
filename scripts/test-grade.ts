@@ -13,6 +13,7 @@ import { inferVibe } from "../lib/osm-amenities";
 import { rankListings, resultsHeadline, scoreStatusLabel } from "../lib/rank-listings";
 import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP, filterListingsByQuery, grantCourtesySearch, isPoliteExtraSearchAsk } from "../lib/listing-cache";
 import { outboundListingLinks } from "../lib/outbound-links";
+import { starterMatrix } from "../lib/starter-profile";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -305,6 +306,12 @@ async function main() {
 
   const rentChat = await runMatrixChat(matrix, [], "I want to rent a condo");
   assert(rentChat.matrix.intent === "rent", "chat can switch to rent");
+
+  const starter = starterMatrix();
+  assert(starter.searchArea === "Tampa, FL", "starter area is Tampa");
+  assert(starter.dimensions.beds.min === 3, "starter beds 3");
+  assert(starter.dimensions.baths.min === 2, "starter baths 2");
+  assert(starter.dimensions.property_type.prefs?.prefer === "sfr", "starter type is SFR");
 
   assert(resultsHeadline(10, 50) === "Showing the top 10 of 50 by score", "list header is top N of M by score");
   assert(resultsHeadline(8, 8) === "Showing 8 by score", "short list has no top-N clip");
