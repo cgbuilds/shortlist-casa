@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Markdown from "react-markdown";
 
 export function ChatMarkdown({ children, invert }: { children: string; invert?: boolean }) {
@@ -32,26 +33,39 @@ export function ChatMarkdown({ children, invert }: { children: string; invert?: 
   );
 }
 
-export function ChatStatus({
-  label,
-  model,
-  phase,
-}: {
-  label: string;
-  model?: string;
-  phase: "sending" | "waiting" | "tools";
-}) {
-  const copy =
-    phase === "sending"
-      ? `Sending your note to ${label}…`
-      : phase === "tools"
-        ? `Waiting on ${label} — updating your matrix tools…`
-        : `Waiting on a reply from ${label}…`;
+const CHAT_BUSY = [
+  "Accepting the request, working really hard…",
+  "Noodling on the must-haves…",
+  "Reticulating floor plans…",
+  "Walking the block in my head…",
+  "Counting porches, not FLOPs…",
+  "Sniffing out a café within a short walk…",
+  "Herding the dimension knobs…",
+  "Chewing on that constraint…",
+  "Combing the drainage, not the model card…",
+  "Lining up beds, baths, and budget…",
+  "Pondering whether we even need another search…",
+  "Polishing the grade curve…",
+  "Asking the catalog, not the void…",
+  "Grazing through the matrix…",
+  "Considering a slightly tighter price cap…",
+];
+
+function pickBusy(exclude?: string) {
+  const pool = exclude ? CHAT_BUSY.filter((line) => line !== exclude) : CHAT_BUSY;
+  return pool[Math.floor(Math.random() * pool.length)] ?? CHAT_BUSY[0];
+}
+
+export function ChatStatus() {
+  const [copy, setCopy] = useState(() => pickBusy());
+  useEffect(() => {
+    const tick = () => setCopy((prev) => pickBusy(prev));
+    const id = window.setInterval(tick, 1600);
+    return () => window.clearInterval(id);
+  }, []);
   return (
     <div className="mr-8 rounded-2xl border border-dashed border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-xs text-[var(--muted)]">
       <p className="font-medium text-[var(--ink)]">{copy}</p>
-      {model ? <p className="mt-1">Model: {model}</p> : null}
-      <p className="mt-1">This can take a few seconds while the model calls catalog tools.</p>
     </div>
   );
 }

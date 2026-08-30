@@ -5,7 +5,10 @@ import type { ChatMessage } from "@/lib/chat";
 import type { UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
 
-type ProviderInfo = { provider: string; model: string; label: string };
+function emitChatLog(event: string, detail: Record<string, unknown>) {
+  const payload = { t: new Date().toISOString(), event, ...detail };
+  console.info("[homestead-chat]", payload);
+}
 
 export function ChatPanel({
   matrix,
@@ -27,39 +30,13 @@ export function ChatPanel({
   ]);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
-  const [phase, setPhase] = useState<"sending" | "waiting" | "tools">("sending");
   const [committed, setCommitted] = useState(false);
-  const [provider, setProvider] = useState<ProviderInfo>({
-    provider: "heuristic",
-    model: "built-in",
-    label: "Built-in coach",
-  });
-  const [lastMeta, setLastMeta] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void fetch("/api/chat")
-      .then((r) => r.json())
-      .then((data: ProviderInfo) => {
-        if (data?.label) setProvider(data);
-      })
-      .catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-  }, [messages, pending, lastMeta]);
-
-  useEffect(() => {
-    if (!pending) return;
-    setPhase("sending");
-    const t1 = window.setTimeout(() => setPhase("waiting"), 400);
-    const t2 = window.setTimeout(() => setPhase("tools"), 2500);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
-  }, [pending]);
+  }, [messages, pending, error]);
 
   async function send() {
     const next = text.trim();
@@ -68,7 +45,8 @@ export function ChatPanel({
     const history = [...messages, { role: "user" as const, content: next }];
     setMessages(history);
     setPending(true);
-    setLastMeta(null);
+    setError(null);
+    emitChatLog("request", { chars: next.length });
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -76,20 +54,20 @@ export function ChatPanel({
         body: JSON.stringify({ messages, text: next, draft: matrix }),
       });
       const data = await res.json();
-      if (data.label) {
-        setProvider({
-          provider: data.provider,
-          model: data.model ?? provider.model,
-          label: data.label,
-        });
-      }
-      const seconds = data.elapsedMs != null ? (data.elapsedMs / 1000).toFixed(1) : null;
-      const tools = data.toolRounds ? `${data.toolRounds} tool round${data.toolRounds === 1 ? "" : "s"}` : "no tool calls";
-      setLastMeta(
-        data.error
-          ? `Error: ${data.error}`
-          : `Reply from ${data.label ?? provider.label}${seconds ? ` in ${seconds}s` : ""} · ${tools}`
-      );
+      emitChatLog("response", {
+        ok: res.ok,
+        provider: data.provider,
+        model: data.model,
+        label: data.label,
+        usedModel: data.usedModel,
+        toolRounds: data.toolRounds ?? 0,
+        elapsedMs: data.elapsedMs,
+        commit: Boolean(data.commit),
+        livePull: Boolean(data.livePull),
+        liveSearch: Boolean(data.liveSearch),
+        error: data.error ?? null,
+      });
+      if (data.error) setError(data.error);
       setMessages([...history, { role: "assistant", content: data.reply ?? "Updated." }]);
       if (data.matrix) {
         onMatrix(data.matrix, Boolean(data.commit), {
@@ -99,7 +77,9 @@ export function ChatPanel({
       }
       if (data.commit) setCommitted(true);
     } catch (err) {
-      setLastMeta(`Request failed: ${err instanceof Error ? err.message : "network error"}`);
+      const message = err instanceof Error ? err.message : "network error";
+      emitChatLog("error", { message });
+      setError(`Request failed: ${message}`);
     } finally {
       setPending(false);
     }
@@ -108,19 +88,16 @@ export function ChatPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-none border-0 bg-transparent">
       <div className="border-b border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
-        Chat provider: <span className="text-[var(--ink)]">{provider.label}</span>
-        {provider.model ? ` · ${provider.model}` : ""}
         {remaining != null ? (
           <>
-            {" "}
-            · Live searches{" "}
+            Live searches{" "}
             <span className="text-[var(--ink)]">
               {Math.max(0, userLimit - remaining)}/{userLimit}
             </span>{" "}
             used · {remaining} left
           </>
         ) : (
-          <> · Beta: {userLimit} live searches per user</>
+          <>Beta: {userLimit} live searches per user</>
         )}
       </div>
       <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto p-4">
@@ -136,8 +113,8 @@ export function ChatPanel({
             <ChatMarkdown invert={m.role === "user"}>{m.content}</ChatMarkdown>
           </div>
         ))}
-        {pending ? <ChatStatus label={provider.label} model={provider.model} phase={phase} /> : null}
-        {lastMeta && !pending ? <p className="text-xs text-[var(--muted)]">{lastMeta}</p> : null}
+        {pending ? <ChatStatus /> : null}
+        {error && !pending ? <p className="text-xs text-[var(--muted)]">{error}</p> : null}
         {committed ? (
           <p className="text-xs text-[var(--accent)]">
             Matrix saved. Upload a CSV below — homes will grade on this page.
@@ -159,7 +136,7 @@ export function ChatPanel({
           className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm"
         />
         <button className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" type="submit" disabled={pending}>
-          {pending ? "Waiting…" : "Send"}
+          {pending ? "On it…" : "Send"}
         </button>
       </form>
     </div>

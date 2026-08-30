@@ -27,6 +27,20 @@ export async function POST(request: Request) {
   const result = await runMatrixChat(draft, body.messages ?? [], text, { userId: user.id });
   if (result.commit) await saveActiveMatrix(user, result.matrix);
 
+  console.info("[homestead-chat]", {
+    userId: user.id,
+    provider: result.provider,
+    model: result.model,
+    label: result.label,
+    usedModel: result.usedModel,
+    toolRounds: result.toolRounds ?? 0,
+    elapsedMs: result.elapsedMs,
+    commit: result.commit,
+    livePull: Boolean(result.livePull),
+    liveSearch: Boolean(result.liveSearch),
+    chars: text.length,
+  });
+
   return NextResponse.json({
     reply: result.reply,
     matrix: result.matrix,
