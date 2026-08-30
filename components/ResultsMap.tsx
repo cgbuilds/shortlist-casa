@@ -10,6 +10,15 @@ import { gradeCaption } from "@/lib/grade";
 
 type Row = { listing: PropertyListing; grade: GradeResult };
 
+function InvalidateSize({ tick }: { tick: string }) {
+  const map = useMap();
+  useEffect(() => {
+    const id = window.setTimeout(() => map.invalidateSize(), 80);
+    return () => window.clearTimeout(id);
+  }, [map, tick]);
+  return null;
+}
+
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
@@ -30,10 +39,12 @@ export function ResultsMap({
   rows,
   selectedId,
   onSelect,
+  layoutTick = "default",
 }: {
   rows: Row[];
   selectedId?: string | null;
   onSelect: (id: string) => void;
+  layoutTick?: string;
 }) {
   const points = rows
     .filter((r) => r.listing.latitude != null && r.listing.longitude != null)
@@ -51,6 +62,7 @@ export function ResultsMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {points.length ? <FitBounds points={points} /> : null}
+      <InvalidateSize tick={layoutTick} />
       {rows.map((row) => {
         if (row.listing.latitude == null || row.listing.longitude == null) return null;
         const selected = row.listing.id === selectedId;

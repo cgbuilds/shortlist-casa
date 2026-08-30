@@ -38,6 +38,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
   const [chatH, setChatH] = useState(320);
+  const [mobilePane, setMobilePane] = useState<"homes" | "chat">("homes");
   const [regrading, setRegrading] = useState(false);
   const [scoreProgress, setScoreProgress] = useState<Pick<RankProgress, "analyzed" | "total" | "processing"> | null>(
     null
@@ -148,7 +149,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   async function runLive(m: UserMatrix, force: boolean) {
     setRegrading(true);
     try {
-      await runScoring({ source: "live", draft: m, force });
+      const data = await runScoring({ source: "live", draft: m, force });
+      if (data?.results?.length) setMobilePane("homes");
     } catch (err) {
       setJob({
         tone: "err",
@@ -200,9 +202,17 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }, [matrix]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <aside className="flex h-[70vh] min-h-0 w-full shrink-0 flex-col border-[var(--line)] lg:h-full lg:w-[22rem] lg:border-r xl:w-[26rem]">
-        <div style={{ height: chatH }} className="flex min-h-0 shrink-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <aside
+        className={`min-h-0 w-full flex-col border-[var(--line)] ${
+          mobilePane === "chat" ? "flex flex-1" : "hidden"
+        } lg:flex lg:h-full lg:w-[22rem] lg:flex-none lg:border-r xl:w-[26rem]`}
+      >
+        <div
+          className="flex min-h-0 flex-1 flex-col lg:h-[var(--chat-h)] lg:flex-none lg:shrink-0"
+          style={{ ["--chat-h" as string]: `${chatH}px` } as React.CSSProperties}
+        >
           <ChatPanel
             matrix={matrix}
             remaining={remaining}
@@ -219,7 +229,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           role="separator"
           aria-label="Drag to expand chat"
           title="Drag to expand chat"
-          className="flex h-3 shrink-0 cursor-ns-resize items-center justify-center border-y border-[var(--line)] bg-[var(--paper-2)] hover:bg-[var(--line)]"
+          className="hidden h-3 shrink-0 cursor-ns-resize items-center justify-center border-y border-[var(--line)] bg-[var(--paper-2)] hover:bg-[var(--line)] lg:flex"
           onPointerDown={(e) => {
             (e.target as HTMLElement).setPointerCapture(e.pointerId);
             chatDrag.current = { y: e.clientY, h: chatH };
@@ -255,6 +265,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           onGraded={(data) => {
             setScoreProgress(null);
             applyGrade(data as Parameters<typeof applyGrade>[0]);
+            if (Array.isArray(data.results) && data.results.length) setMobilePane("homes");
           }}
           onScoreProgress={onScoreProgress}
         />
@@ -268,9 +279,13 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         </div>
       </aside>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <section
+        className={`min-h-0 min-w-0 flex-col ${
+          mobilePane === "homes" ? "flex flex-1" : "hidden"
+        } lg:flex lg:flex-1`}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
-          <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
+          <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">
             {resultsHeadline(rows.length, totalMatched)}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -296,7 +311,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
               className={`px-3 py-1.5 ${view === "split" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
               onClick={() => setView("split")}
             >
-              List + map
+              <span className="lg:hidden">Map</span>
+              <span className="hidden lg:inline">List + map</span>
             </button>
             </div>
           </div>
@@ -309,12 +325,19 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
         <div className={`min-h-0 flex-1 ${view === "split" ? "flex flex-col md:flex-row" : "overflow-y-auto"}`}>
           {view === "split" ? (
-            <div className="h-64 min-h-0 min-w-0 md:h-auto md:flex-1">
-              <ResultsMap rows={rows} selectedId={selectedId} onSelect={setSelectedId} />
+            <div className="min-h-[11rem] min-w-0 flex-[1.15] md:h-auto md:flex-1">
+              <ResultsMap
+                rows={rows}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                layoutTick={`${mobilePane}-${view}`}
+              />
             </div>
           ) : null}
           <div
-            className={`space-y-3 overflow-y-auto p-3 ${view === "split" ? "md:w-[22rem] md:shrink-0 xl:w-[26rem]" : ""}`}
+            className={`space-y-3 overflow-y-auto p-3 ${
+              view === "split" ? "min-h-0 flex-1 md:w-[22rem] md:flex-none md:shrink-0 xl:w-[26rem]" : ""
+            }`}
           >
             {rows.map((row) => (
               <div
@@ -333,6 +356,24 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           </div>
         </div>
       </section>
+      </div>
+
+      <nav className="grid shrink-0 grid-cols-2 border-t border-[var(--line)] bg-[var(--paper-2)] pb-[env(safe-area-inset-bottom)] lg:hidden">
+        <button
+          type="button"
+          className={`px-3 py-2.5 text-sm ${mobilePane === "homes" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
+          onClick={() => setMobilePane("homes")}
+        >
+          Homes
+        </button>
+        <button
+          type="button"
+          className={`px-3 py-2.5 text-sm ${mobilePane === "chat" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
+          onClick={() => setMobilePane("chat")}
+        >
+          Chat
+        </button>
+      </nav>
     </div>
   );
 }
