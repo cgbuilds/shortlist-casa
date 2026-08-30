@@ -11,7 +11,7 @@ import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
 import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
 import { postSearch } from "@/lib/search-client";
-import { resultsHeadline, type RankProgress } from "@/lib/rank-listings";
+import { resultsHeadline, type RankProgress } from "@/lib/rank-presentation";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,

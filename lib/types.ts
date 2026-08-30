@@ -142,3 +142,5 @@ export type CatalogDimension = {
   defaultKnobs: DimensionKnobs;
   allowedKnobs: string[];
 };
+
+export type ChatMessage = { role: "user" | "assistant"; content: string };

@@ -1,29 +1,11 @@
 import { grade, takeTopListings } from "@/lib/grade";
 import { enrichListingsForMatrix } from "@/lib/osm-amenities";
 import { rememberListing } from "@/lib/rentcast";
-import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
+import type { RankProgress, RankRow } from "@/lib/rank-presentation";
+import type { PropertyListing, UserMatrix } from "@/lib/types";
 
-export type RankRow = { listing: PropertyListing; grade: GradeResult };
-
-export type RankProgress = {
-  analyzed: number;
-  total: number;
-  processing: number;
-  results: RankRow[];
-  totalMatched: number;
-};
-
-export function scoreStatusLabel(p: Pick<RankProgress, "analyzed" | "total" | "processing">) {
-  if (p.total <= 0) return "";
-  if (p.processing > 0) return `${p.analyzed}/${p.total} scored, ${p.processing} processing…`;
-  return `${p.analyzed}/${p.total} scored`;
-}
-
-export function resultsHeadline(shown: number, total: number) {
-  if (!shown) return "No homes yet";
-  if (total > shown) return `Showing the top ${shown} of ${total} by score`;
-  return `Showing ${shown} by score`;
-}
+export { resultsHeadline, scoreStatusLabel } from "@/lib/rank-presentation";
+export type { RankProgress, RankRow } from "@/lib/rank-presentation";
 
 const BATCH = 3;
 

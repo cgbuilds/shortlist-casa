@@ -1,4 +1,4 @@
-import { scoreStatusLabel, type RankProgress } from "@/lib/rank-listings";
+import { scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
 
 export type SearchResponse = {
   error?: string;

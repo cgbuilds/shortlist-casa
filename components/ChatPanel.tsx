@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ChatMessage } from "@/lib/chat";
-import type { UserMatrix } from "@/lib/types";
+import type { ChatMessage, UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
 
 const CHAT_STORAGE_KEY = "homestead-chat-messages";

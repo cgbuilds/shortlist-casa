@@ -4,9 +4,9 @@ import { adviseLiveSearch, grantCourtesySearch, getLiveQuota, isPoliteExtraSearc
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { WHY_GRADE_INSTRUCTIONS } from "@/lib/grade";
 import { queryFromMatrix } from "@/lib/rentcast";
-import type { UserMatrix } from "@/lib/types";
+import type { ChatMessage, UserMatrix } from "@/lib/types";
 
-export const SYSTEM_PROMPT = `You are a home-buying coach (default: they want to **buy**, not rent). Users grade listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
+export const SYSTEM_PROMPT = `You are a home-buying coach (default: they want to **buy**, not rent). Users score listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
 Never say "matrix" to the user — say must-haves or home profile.
 
 You may add a manual rubric for qualitative extras.
@@ -38,10 +38,10 @@ When baseline is complete AND the user confirms, call commit_matrix. Tell them t
 
 ${WHY_GRADE_INSTRUCTIONS}
 
-LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-grades the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.
-If they want more than 3 live searches, tell them to re-grade the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
+LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-scores the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.
+If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type { ChatMessage } from "@/lib/types";
 
 type LlmClient = { client: OpenAI; model: string; provider: string };
 

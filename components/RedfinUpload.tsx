@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
 import { postSearch } from "@/lib/search-client";
-import type { RankProgress } from "@/lib/rank-listings";
+import type { RankProgress } from "@/lib/rank-presentation";
 import type { UserMatrix } from "@/lib/types";
 
 export type GradePayload = {
