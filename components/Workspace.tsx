@@ -263,6 +263,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
       {chatOpen ? null : <ChatFab onClick={() => setChatOpen(true)} />}
       <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)}>
+        <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
           matrix={matrix}
           remaining={remaining}
@@ -274,6 +275,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             else if (extra?.liveSearch) void runLive(m, false);
           }}
         />
+        </div>
         <div className="max-h-40 shrink-0 overflow-y-auto border-t border-[var(--line)]">
           <RedfinUpload
             compact
