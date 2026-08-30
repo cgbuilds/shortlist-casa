@@ -453,6 +453,12 @@ export function baselineStatus(matrix: UserMatrix): { complete: boolean; gaps: B
   const prefer = ptype?.prefs?.prefer ? String(ptype.prefs.prefer) : "";
   const gaps: BaselineGap[] = [
     {
+      id: "intent",
+      label: "Buy or rent",
+      value: matrix.intent === "rent" ? "Rent" : "Buy",
+      done: true,
+    },
+    {
       id: "area",
       label: "General area",
       value: matrix.searchArea || matrix.locationAllowlist.join(", ") || "not set",

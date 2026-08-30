@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { Fold } from "@/components/Fold";
 import type { UserMatrix } from "@/lib/types";
 
 export type GradePayload = {
@@ -56,9 +57,9 @@ export function RedfinUpload({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("");
-  const [pending, setPending] = useState<"live" | "refresh" | "csv" | "sample" | "">("");
+  const [pending, setPending] = useState<"refresh" | "csv" | "sample" | "">("");
 
-  async function grade(body: Record<string, unknown>, kind: "live" | "refresh" | "csv" | "sample") {
+  async function grade(body: Record<string, unknown>, kind: "refresh" | "csv" | "sample") {
     setPending(kind);
     setStatus("");
     try {
@@ -105,21 +106,6 @@ export function RedfinUpload({
       <div className="mt-2 flex flex-wrap gap-2">
         <button
           type="button"
-          className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm text-white disabled:opacity-50"
-          disabled={Boolean(pending)}
-          onClick={() =>
-            void grade(
-              savedCount
-                ? { source: "saved", draft: matrix }
-                : { source: "live", draft: matrix, force: false },
-              "live"
-            )
-          }
-        >
-          {pending === "live" ? "Re-grading…" : "Re-grade"}
-        </button>
-        <button
-          type="button"
           className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
           disabled={Boolean(pending) || !canSpendPull}
           title="Spends 1 of 3 live searches. Cache never resets unless you confirm this or widen area/type/budget."
@@ -152,33 +138,35 @@ export function RedfinUpload({
         />
       </div>
       {savedFilename && savedCount ? (
-        <p className="mt-2 text-sm text-[var(--accent)]">
-          Saved {savedFilename} — {savedCount} home{savedCount === 1 ? "" : "s"} on file. It persists after
-          refresh. Re-grade uses this list; live search will not replace it.
-        </p>
+        <Fold title={`Saved file · ${savedCount} home${savedCount === 1 ? "" : "s"}`} titleClassName="text-[var(--accent)]">
+          {savedFilename} stays on this account after refresh. Re-grade (homes bar) uses this list; a live
+          search will not replace it.
+        </Fold>
       ) : null}
-      <p className="mt-2 text-xs text-[var(--muted)]">
-        {liveSearch ? (
-          <>
-            Live searches {used}/{limit} used · {pullsLeft} left. RentCast account {accountUsed}/{accountLimit}{" "}
-            this month (hard stop at 50 — no $0.20 overage). Cache stays until you confirm another pull or
-            widen area/type/beds/price ({cacheCount ?? 0} cached). <strong>Re-grade</strong> (also on the homes
-            bar) scores the current list for free. Coffee, vibe, and drainage never spend a pull. Ask chat
-            before using another live search.
-          </>
-        ) : signupUrl ? (
-          <>
-            Fastest live path: free RentCast key (50 pulls/month) from{" "}
-            <a href={signupUrl} target="_blank" rel="noreferrer" className="underline">
-              rentcast.io/api
-            </a>
-            , then set <code>RENTCAST_API_KEY</code>. Or upload a Redfin Favorites CSV.
-          </>
-        ) : (
-          "Upload a Redfin Favorites CSV, or add RENTCAST_API_KEY for live search."
-        )}
-      </p>
-      {status ? <p className="mt-1 text-xs text-[var(--muted)]">{status}</p> : null}
+      {liveSearch ? (
+        <Fold title={`Live searches · ${used}/${limit} used`}>
+          {pullsLeft} left this month. Account {accountUsed}/{accountLimit} (hard stop at 50 — no $0.20 overage).
+          Cache stays until you confirm another pull or widen area/type/beds/price ({cacheCount ?? 0} cached).
+          Coffee, vibe, and drainage never spend a pull. Ask chat before using another live search.
+        </Fold>
+      ) : signupUrl ? (
+        <Fold title="Live search setup">
+          Fastest live path: free RentCast key (50 pulls/month) from{" "}
+          <a href={signupUrl} target="_blank" rel="noreferrer" className="underline">
+            rentcast.io/api
+          </a>
+          , then set <code>RENTCAST_API_KEY</code>. Or upload a Redfin Favorites CSV.
+        </Fold>
+      ) : (
+        <Fold title="Live search setup">
+          Upload a Redfin Favorites CSV, or add RENTCAST_API_KEY for live search.
+        </Fold>
+      )}
+      {status ? (
+        <Fold title={status.split(/[.!?]/)[0] || "Last result"}>
+          {status}
+        </Fold>
+      ) : null}
     </section>
   );
 }

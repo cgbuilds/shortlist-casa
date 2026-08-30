@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Fold } from "@/components/Fold";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
@@ -25,7 +26,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("split");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showLevers, setShowLevers] = useState(false);
   const [liveSearch, setLiveSearch] = useState(false);
   const [signupUrl, setSignupUrl] = useState("https://www.rentcast.io/api");
   const [remaining, setRemaining] = useState<number | undefined>(undefined);
@@ -224,16 +224,13 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           savedCount={savedCount}
           onGraded={(data) => applyGrade(data as Parameters<typeof applyGrade>[0])}
         />
-        <details
-          className="border-t border-[var(--line)] text-sm"
-          open={showLevers}
-          onToggle={(e) => setShowLevers((e.target as HTMLDetailsElement).open)}
-        >
-          <summary className="cursor-pointer px-3 py-2 text-[var(--muted)]">Your must-haves</summary>
-          <div className="max-h-80 overflow-y-auto px-3 pb-3">
-            <MatrixPreview matrix={matrix} />
-          </div>
-        </details>
+        <div className="border-t border-[var(--line)] px-3 pb-3">
+          <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">
+            <div className="max-h-80 overflow-y-auto">
+              <MatrixPreview matrix={matrix} />
+            </div>
+          </Fold>
+        </div>
         </div>
       </aside>
 
@@ -245,33 +242,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
                 ? `Top ${rows.length} of ${totalMatched} homes`
                 : `${rows.length} home${rows.length === 1 ? "" : "s"}`
               : "No homes yet"}
-            {` · ${matrix.intent === "rent" ? "Rent" : "Buy"}`}
             {matrix.searchArea ? ` · Must-haves: ${matrix.searchArea}` : " · No must-haves saved yet"}
             {notice ? ` · ${notice}` : ""}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-lg border border-[var(--line)] text-sm" role="group" aria-label="Buy or rent">
-              <button
-                type="button"
-                className={`px-3 py-1.5 ${matrix.intent !== "rent" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
-                onClick={() => {
-                  if (matrix.intent === "buy") return;
-                  persistMatrix({ ...matrix, intent: "buy" });
-                }}
-              >
-                Buy
-              </button>
-              <button
-                type="button"
-                className={`px-3 py-1.5 ${matrix.intent === "rent" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
-                onClick={() => {
-                  if (matrix.intent === "rent") return;
-                  persistMatrix({ ...matrix, intent: "rent" });
-                }}
-              >
-                Rent
-              </button>
-            </div>
             <button
               type="button"
               className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
