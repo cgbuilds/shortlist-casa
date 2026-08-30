@@ -395,6 +395,36 @@ export const PROPERTY_TYPE_LABELS: Record<string, string> = {
   multi: "Multi-family",
 };
 
+const PLACE_ALIASES: Record<string, string> = {
+  "st pete": "st petersburg",
+  "st. pete": "st petersburg",
+  "saint petersburg": "st petersburg",
+  "st. petersburg": "st petersburg",
+  "st petersburg": "st petersburg",
+};
+
+export function normalizePlaceName(raw: string) {
+  let compact = raw.toLowerCase().replace(/[.]/g, "").replace(/\s+/g, " ").trim();
+  compact = compact
+    .replace(/\bsaint petersburg\b/g, "st petersburg")
+    .replace(/\bst pete\b/g, "st petersburg");
+  return PLACE_ALIASES[compact] ?? compact;
+}
+
+export function placesMatch(haystack: string, needle: string) {
+  const h = normalizePlaceName(haystack);
+  const n = normalizePlaceName(needle);
+  if (!h || !n) return false;
+  return h.includes(n) || n.includes(h);
+}
+
+export function displayCityName(raw: string) {
+  const n = normalizePlaceName(raw);
+  if (n === "st petersburg") return "St. Petersburg";
+  if (n === "clearwater") return "Clearwater";
+  return raw.trim();
+}
+
 export function isLegacyAllowlist(areas: string[] | undefined) {
   if (!areas || areas.length !== LEGACY_AREAS.length) return false;
   return LEGACY_AREAS.every((a) => areas.includes(a));

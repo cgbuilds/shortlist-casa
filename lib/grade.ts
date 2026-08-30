@@ -1,4 +1,4 @@
-import { CATALOG, catalogById, parseSearchArea } from "@/kb/catalog";
+import { CATALOG, catalogById, parseSearchArea, placesMatch } from "@/kb/catalog";
 import { inferVibe } from "@/lib/osm-amenities";
 import type {
   DimensionScore,
@@ -492,9 +492,9 @@ function evaluateDimension(
             : "No neighborhood filter",
         };
       }
-      const hay = `${area} ${listing.city} ${listing.neighborhood ?? ""}`.toLowerCase();
+      const hay = `${area} ${listing.city} ${listing.neighborhood ?? ""}`;
       const ok = matrix.locationAllowlist.some(
-        (a) => hay.includes(a.toLowerCase()) || a.toLowerCase() === area?.toLowerCase()
+        (named) => placesMatch(hay, named) || placesMatch(area ?? "", named)
       );
       return {
         id,

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { baselineStatus } from "@/kb/catalog";
 import { grade } from "@/lib/grade";
-import { parseAddressFromInput } from "@/lib/parse-address";
 import { loadBundledRedfinFavorites, parseRedfinCsv } from "@/lib/redfin-csv";
 import {
   hasLiveSearch,
@@ -16,6 +15,7 @@ import {
   filterListingsByQuery,
   getLiveCache,
   getLiveQuota,
+  listingsFromCache,
   livePullNotice,
   markFetched,
   withUserQueue,
@@ -23,7 +23,7 @@ import {
 } from "@/lib/listing-cache";
 import { enrichListingsForMatrix } from "@/lib/osm-amenities";
 import { ensureMatrix } from "@/lib/matrix-tools";
-import { getSessionUser, getUserListings, loadActiveMatrix, saveGrade, saveSearch, saveUserListings } from "@/lib/session";
+import { getSessionUser, getUserListings, getCsvMeta, loadActiveMatrix, saveCsvListings, saveGrade, saveSearch } from "@/lib/session";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
 async function rank(listings: PropertyListing[], matrix: UserMatrix) {
@@ -65,6 +65,7 @@ export async function GET() {
     signupUrl: RENTCAST_SIGNUP_URL,
     quota: getLiveQuota(user.id),
     cache: getLiveCache(user.id),
+    saved: getCsvMeta(user),
   });
 }
 
@@ -80,7 +81,8 @@ export async function POST(request: Request) {
     maxPrice?: number;
     q?: string;
     csv?: string;
-    source?: "favorites" | "rentcast" | "upload" | "live";
+    filename?: string;
+    source?: "favorites" | "rentcast" | "upload" | "live" | "saved";
     draft?: UserMatrix;
     force?: boolean;
   };
@@ -92,14 +94,19 @@ export async function POST(request: Request) {
     if (!parsed.length) {
       return NextResponse.json({ error: "No rows parsed. Use Redfin → Favorites → Download CSV." }, { status: 400 });
     }
-    saveUserListings(user, parsed);
+    const filename = body.filename?.trim() || "favorites.csv";
+    saveCsvListings(user, parsed, filename);
     const ranked = await rank(filterList(parsed, body), matrix);
-    await saveSearch(user, { source: "upload" }, ranked.map((r) => r.listing.id));
+    await saveSearch(user, { source: "upload", filename }, ranked.map((r) => r.listing.id));
     for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+    const saved = getCsvMeta(user);
     return NextResponse.json({
       source: "upload",
-      notice: `Imported ${parsed.length} Redfin rows.`,
+      notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — Search & grade uses it until you upload a new CSV.`,
       results: ranked,
+      saved,
+      quota: getLiveQuota(user.id),
+      cache: getLiveCache(user.id),
     });
   }
 
@@ -176,7 +183,7 @@ export async function POST(request: Request) {
         fromCache = false;
       }
       const filtered = filterListingsByQuery(listings, query);
-      saveUserListings(user, listings);
+      listings.forEach(rememberListing);
       const ranked = await rank(filtered, matrix);
       await saveSearch(user, { source: "live", query, fromCache, pulled }, ranked.map((r) => r.listing.id));
       for (const row of ranked) await saveGrade(user, row.listing, row.grade);
@@ -204,6 +211,7 @@ export async function POST(request: Request) {
         pulled,
         needsConfirm: decision.action === "confirm",
         advice,
+        saved: getCsvMeta(user),
       });
     });
   }
@@ -218,21 +226,59 @@ export async function POST(request: Request) {
     );
   }
 
-  const listings = body.source === "favorites" ? loadBundledRedfinFavorites() : getUserListings(user);
-  if (body.source === "favorites") saveUserListings(user, listings);
-  const city = body.city || (body.q && !parseAddressFromInput(body.q) && !/\d/.test(body.q) ? body.q : undefined);
-  let working = filterList(listings, { ...body, city, q: city ? undefined : body.q });
-  if (body.source !== "favorites" && getLiveCache(user.id)) {
-    working = filterListingsByQuery(working, queryFromMatrix(matrix));
+  const saved = getCsvMeta(user);
+  const csv = getUserListings(user);
+  if (body.source === "saved") {
+    if (!csv.length) {
+      return NextResponse.json(
+        { error: "No saved CSV yet. Upload a Redfin Favorites file first.", saved: null },
+        { status: 400 }
+      );
+    }
+    const ranked = await rank(filterList(csv, body), matrix);
+    await saveSearch(user, { source: "saved" }, ranked.map((r) => r.listing.id));
+    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+    return NextResponse.json({
+      source: "saved",
+      notice: `Graded ${ranked.length} homes from saved file ${saved?.filename ?? "your CSV"}.`,
+      results: ranked,
+      quota: getLiveQuota(user.id),
+      cache: getLiveCache(user.id),
+      saved,
+    });
   }
+
+  if (body.source === "favorites") {
+    const listings = loadBundledRedfinFavorites();
+    listings.forEach(rememberListing);
+    const ranked = await rank(filterList(listings, body), matrix);
+    await saveSearch(user, body, ranked.map((r) => r.listing.id));
+    for (const row of ranked) await saveGrade(user, row.listing, row.grade);
+    return NextResponse.json({
+      source: "redfin-favorites",
+      notice: `Showing ${listings.length} homes from the sample Valrico CSV. Your uploaded file is unchanged${saved ? ` (${saved.filename}, ${saved.count} homes)` : ""}.`,
+      results: ranked,
+      quota: getLiveQuota(user.id),
+      cache: getLiveCache(user.id),
+      saved,
+    });
+  }
+
+  const liveList = listingsFromCache(user.id);
+  const listings = csv.length ? csv : liveList ?? [];
+  const working = csv.length
+    ? filterList(listings, body)
+    : liveList
+      ? filterListingsByQuery(liveList, queryFromMatrix(matrix))
+      : [];
   const ranked = await rank(working, matrix);
   await saveSearch(user, body, ranked.map((r) => r.listing.id));
   for (const row of ranked) await saveGrade(user, row.listing, row.grade);
   const cache = getLiveCache(user.id);
   const quota = getLiveQuota(user.id);
-  return NextResponse.json({
-    source: body.source === "favorites" ? "redfin-favorites" : cache ? "cache" : "session",
-    notice: cache
+  const notice = csv.length
+    ? `Graded ${ranked.length} homes from saved file ${saved?.filename ?? "your CSV"}.`
+    : cache
       ? livePullNotice({
           fromCache: true,
           stale: cache.stale,
@@ -242,9 +288,13 @@ export async function POST(request: Request) {
           quota,
           searchArea: matrix.searchArea,
         })
-      : `${listings.length} homes from ${body.source === "favorites" ? "the sample Valrico Redfin CSV" : "your current list"}.`,
+      : "No saved CSV and no live cache yet. Upload a Redfin Favorites CSV or use a live search.";
+  return NextResponse.json({
+    source: csv.length ? "saved" : cache ? "cache" : "session",
+    notice,
     results: ranked,
     quota,
     cache,
+    saved,
   });
 }

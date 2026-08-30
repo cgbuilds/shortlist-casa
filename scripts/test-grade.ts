@@ -92,6 +92,19 @@ async function main() {
   );
   assert(valricoQ.city === "Valrico", "named city is a tight search");
   assert(valricoQ.radius == null, "no metro radius when a city is named");
+  const pinellasMx = applyTool(liveMx, "set_budget", {
+    searchArea: "Tampa, FL",
+    locationAllowlist: ["St. Pete", "Clearwater"],
+  }).matrix;
+  const pinellasQ = queryFromMatrix(pinellasMx);
+  assert(pinellasQ.address?.includes("St. Petersburg"), `Pinellas live search should center St. Pete, got ${pinellasQ.address}`);
+  assert(pinellasQ.radius === 14, "two named cities use a local radius, not Tampa 22mi");
+  assert(!pinellasQ.city || pinellasQ.city !== "Tampa", "do not city-filter Tampa when St Pete is named");
+  const stPeteHome = { ...sample, city: "Saint Petersburg", state: "FL" };
+  const stPeteGrade = grade(stPeteHome, pinellasMx).perDimension.find((d) => d.id === "school_area");
+  assert(!stPeteGrade?.mustHaveFailed, "Saint Petersburg matches St. Pete allowlist");
+  const tampaOnly = grade({ ...sample, city: "Tampa", state: "FL" }, pinellasMx).perDimension.find((d) => d.id === "school_area");
+  assert(tampaOnly?.mustHaveFailed, "Tampa city fails St Pete/Clearwater allowlist");
 
   process.env.RENTCAST_USER_MONTHLY_LIMIT = "3";
   assert(quotaLimits().userLimit === 3, "beta default is 3 live searches");

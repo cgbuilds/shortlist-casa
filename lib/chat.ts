@@ -10,7 +10,7 @@ You ONLY configure scoring via tools. Never invent dimensions outside the catalo
 You may add a manual rubric for qualitative extras.
 
 BASELINE FIRST — do not skip this, and do not commit until baseline is complete:
-1. General area (metro + state), e.g. Tampa, FL. Call set_budget with searchArea "Tampa, FL". Leave locationAllowlist empty unless they name specific cities/neighborhoods (Valrico, Brandon, etc.). Never copy a default neighborhood list.
+1. General area. If they name cities (St. Petersburg, Clearwater, Valrico), put those in locationAllowlist and set searchArea to the primary city + state (e.g. "St. Petersburg, FL") — not Tampa — unless they actually asked for Tampa. Live search follows the named cities. Only use searchArea "Tampa, FL" with an empty allowlist when they want the whole Tampa metro. Never copy a default neighborhood list.
 2. Minimum bedrooms (set_dimension id beds, enabled true, min, mustHave true)
 3. Minimum bathrooms (set_dimension id baths)
 4. Property type (set_dimension id property_type, prefs.prefer one of townhouse | sfr | condo | multi)
@@ -431,6 +431,8 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     [/\briver hills\b/i, "River Hills"],
     [/\bvalrico\b/i, "Valrico"],
     [/\bbrandon\b/i, "Brandon"],
+    [/\bst\.?\s*pete(?:rsburg)?\b/i, "St. Petersburg"],
+    [/\bclearwater\b/i, "Clearwater"],
     [/\blithia\b/i, "Lithia"],
     [/\briverview\b/i, "Riverview"],
   ];
@@ -443,6 +445,9 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
   if (citySt) {
     const st = citySt[2].toUpperCase() === "FLORIDA" ? "FL" : citySt[2].toUpperCase();
     searchArea = `${citySt[1].trim()}, ${st}`;
+  } else if (namedPlaces.some((p) => /petersburg|clearwater/i.test(p))) {
+    const primary = namedPlaces.find((p) => /petersburg/i.test(p)) ?? namedPlaces.find((p) => /clearwater/i.test(p)) ?? namedPlaces[0];
+    searchArea = `${primary}, FL`;
   } else if (/\btampa\b/i.test(userText)) {
     searchArea = "Tampa, FL";
   } else if (namedPlaces.length) {

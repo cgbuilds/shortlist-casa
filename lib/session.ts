@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { ensureMatrix } from "@/lib/matrix-tools";
-import { findRedfinListing, loadBundledRedfinFavorites } from "@/lib/redfin-csv";
+import { findRedfinListing } from "@/lib/redfin-csv";
 import { recallListing, rememberListing } from "@/lib/rentcast";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
@@ -12,7 +14,62 @@ export type SessionUser = { id: string; email: string; demo: boolean };
 
 const memoryMatrices = new Map<string, UserMatrix>();
 const memoryGrades = new Map<string, { listing: PropertyListing; facts: PropertyListing["facts"] }[]>();
-const memoryUploads = new Map<string, PropertyListing[]>();
+const memoryCsv = new Map<string, SavedCsv>();
+
+export type SavedCsvMeta = {
+  filename: string;
+  count: number;
+  savedAt: number;
+};
+
+type SavedCsv = SavedCsvMeta & { listings: PropertyListing[] };
+
+function csvFile(userId: string) {
+  const safe = userId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "user";
+  return join(process.cwd(), ".data", `csv-${safe}.json`);
+}
+
+function hydrateCsv(userId: string): SavedCsv | null {
+  const mem = memoryCsv.get(userId);
+  if (mem) return mem;
+  try {
+    const file = csvFile(userId);
+    if (!existsSync(file)) return null;
+    const raw = JSON.parse(readFileSync(file, "utf8")) as SavedCsv;
+    if (!Array.isArray(raw.listings) || !raw.listings.length) return null;
+    memoryCsv.set(userId, raw);
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function persistCsv(userId: string, row: SavedCsv) {
+  memoryCsv.set(userId, row);
+  const file = csvFile(userId);
+  mkdirSync(join(process.cwd(), ".data"), { recursive: true });
+  writeFileSync(file, JSON.stringify(row));
+}
+
+export function saveCsvListings(user: SessionUser, listings: PropertyListing[], filename: string) {
+  listings.forEach(rememberListing);
+  persistCsv(user.id, {
+    filename: filename.replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 120) || "favorites.csv",
+    count: listings.length,
+    savedAt: Date.now(),
+    listings,
+  });
+}
+
+export function getCsvListings(user: SessionUser): PropertyListing[] {
+  return hydrateCsv(user.id)?.listings ?? [];
+}
+
+export function getCsvMeta(user: SessionUser): SavedCsvMeta | null {
+  const row = hydrateCsv(user.id);
+  if (!row) return null;
+  return { filename: row.filename, count: row.count, savedAt: row.savedAt };
+}
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   const supabase = await createSupabaseServer();
@@ -81,13 +138,10 @@ export async function saveGrade(user: SessionUser, listing: PropertyListing, sco
   });
 }
 
-export function saveUserListings(user: SessionUser, listings: PropertyListing[]) {
-  memoryUploads.set(user.id, listings);
-  listings.forEach(rememberListing);
-}
-
 export function getUserListings(user: SessionUser): PropertyListing[] {
-  return memoryUploads.get(user.id) ?? loadBundledRedfinFavorites();
+  const csv = getCsvListings(user);
+  if (csv.length) return csv;
+  return [];
 }
 
 export function memoryListingFor(userId: string, listingId: string): PropertyListing | undefined {

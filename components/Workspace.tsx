@@ -32,7 +32,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [globalUsed, setGlobalUsed] = useState<number | undefined>(undefined);
   const [globalLimit, setGlobalLimit] = useState(50);
   const [cacheCount, setCacheCount] = useState(0);
+  const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
+  const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
   const skipMatrixGrade = useRef(true);
+
+  const applySaved = (saved?: { filename: string; count: number } | null) => {
+    if (!saved) return;
+    setSavedFilename(saved.filename);
+    setSavedCount(saved.count);
+  };
 
   const applyGrade = useCallback((data: {
     results?: Row[];
@@ -40,6 +48,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     error?: string;
     quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
     cache?: { count: number };
+    saved?: { filename: string; count: number } | null;
   }) => {
     if (data.results) {
       setRows(data.results);
@@ -54,6 +63,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       if (data.quota.globalLimit != null) setGlobalLimit(data.quota.globalLimit);
     }
     if (data.cache?.count != null) setCacheCount(data.cache.count);
+    applySaved(data.saved);
   }, []);
 
   async function refreshGrades(m?: UserMatrix) {
@@ -82,6 +92,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         signupUrl?: string;
         quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
         cache?: { count: number };
+        saved?: { filename: string; count: number } | null;
       }) => {
         setLiveSearch(Boolean(data.liveSearch));
         if (data.signupUrl) setSignupUrl(data.signupUrl);
@@ -93,6 +104,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           if (data.quota.globalLimit != null) setGlobalLimit(data.quota.globalLimit);
         }
         if (data.cache?.count != null) setCacheCount(data.cache.count);
+        if (data.saved) {
+          setSavedFilename(data.saved.filename);
+          setSavedCount(data.saved.count);
+        }
       })
       .catch(() => undefined);
     void refreshGrades();
@@ -134,7 +149,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           globalUsed={globalUsed}
           globalLimit={globalLimit}
           cacheCount={cacheCount}
-          onGraded={(data) => applyGrade(data as { results?: Row[]; notice?: string; quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number } })}
+          savedFilename={savedFilename}
+          savedCount={savedCount}
+          onGraded={(data) => applyGrade(data as Parameters<typeof applyGrade>[0])}
         />
         <details
           className="border-t border-[var(--line)] text-sm"

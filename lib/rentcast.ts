@@ -1,4 +1,4 @@
-import { parseSearchArea } from "@/kb/catalog";
+import { displayCityName, normalizePlaceName, parseSearchArea } from "@/kb/catalog";
 import { findRedfinListing } from "@/lib/redfin-csv";
 import { SEED_LISTINGS, slugAddress } from "@/data/listings";
 import { RENTCAST_CAP_MESSAGE, reserveRentcastCall, withGlobalQueue } from "@/lib/listing-cache";
@@ -129,9 +129,18 @@ export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
     maxPrice: matrix.budget.maxPrice,
     propertyType: RC_PROPERTY_TYPE[prefer],
   };
-  if (named.length === 1 && parsed.state) {
-    query.city = named[0];
-    query.state = parsed.state;
+  const state = parsed.state || "FL";
+  if (named.length === 1) {
+    query.city = displayCityName(named[0]);
+    query.state = state;
+    return query;
+  }
+  if (named.length > 1) {
+    const pinellas = named.find((n) => /petersburg|clearwater|largo|gulfport|pinellas/i.test(normalizePlaceName(n)));
+    const center = displayCityName(pinellas || named[0]);
+    query.address = `${center}, ${state}`;
+    query.radius = 14;
+    query.state = state;
     return query;
   }
   if (parsed.city && parsed.state) {

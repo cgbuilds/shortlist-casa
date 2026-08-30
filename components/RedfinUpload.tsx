@@ -20,6 +20,7 @@ export type GradePayload = {
   pulled?: boolean;
   needsConfirm?: boolean;
   advice?: { advice?: string; coveragePct?: number | null; used?: number; userLimit?: number };
+  saved?: { filename: string; count: number; savedAt: number } | null;
 };
 
 export function RedfinUpload({
@@ -34,6 +35,8 @@ export function RedfinUpload({
   globalUsed,
   globalLimit,
   cacheCount,
+  savedFilename,
+  savedCount,
   onGraded,
 }: {
   heading?: string;
@@ -47,6 +50,8 @@ export function RedfinUpload({
   globalUsed?: number;
   globalLimit?: number;
   cacheCount?: number;
+  savedFilename?: string;
+  savedCount?: number;
   onGraded?: (data: GradePayload) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -80,7 +85,7 @@ export function RedfinUpload({
   async function onFile(file: File | undefined) {
     if (!file) return;
     const csv = await file.text();
-    await grade({ csv, source: "upload", draft: matrix }, "csv");
+    await grade({ csv, source: "upload", draft: matrix, filename: file.name }, "csv");
   }
 
   const pullsLeft = remaining ?? userLimit ?? 3;
@@ -102,9 +107,22 @@ export function RedfinUpload({
           type="button"
           className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm text-white disabled:opacity-50"
           disabled={Boolean(pending)}
-          onClick={() => void grade({ source: "live", draft: matrix, force: false }, "live")}
+          onClick={() =>
+            void grade(
+              savedCount
+                ? { source: "saved", draft: matrix }
+                : { source: "live", draft: matrix, force: false },
+              "live"
+            )
+          }
         >
-          {pending === "live" ? "Searching…" : "Search & grade"}
+          {pending === "live"
+            ? savedCount
+              ? "Grading…"
+              : "Searching…"
+            : savedCount
+              ? `Grade saved CSV (${savedCount})`
+              : "Search & grade"}
         </button>
         <button
           type="button"
@@ -139,6 +157,12 @@ export function RedfinUpload({
           onChange={(e) => void onFile(e.target.files?.[0])}
         />
       </div>
+      {savedFilename && savedCount ? (
+        <p className="mt-2 text-sm text-[var(--accent)]">
+          Saved {savedFilename} — {savedCount} home{savedCount === 1 ? "" : "s"} on file. It persists after
+          refresh. Search & grade uses this list; live search will not replace it.
+        </p>
+      ) : null}
       <p className="mt-2 text-xs text-[var(--muted)]">
         {liveSearch ? (
           <>

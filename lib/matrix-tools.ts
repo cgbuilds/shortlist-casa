@@ -150,7 +150,7 @@ export const CHAT_TOOLS = [
     type: "function" as const,
     function: {
       name: "set_budget",
-      description: "Set search area, neighborhood allowlist, and money caps. Use searchArea for metro like 'Tampa, FL'. Use locationAllowlist for cities/neighborhoods/school zones inside that area.",
+      description: "Set search area, neighborhood allowlist, and money caps. Named cities go in locationAllowlist and become the live-search center (St. Petersburg + Clearwater, not Tampa). Use searchArea for the primary city/metro only when they asked for that place.",
       parameters: {
         type: "object",
         properties: {
