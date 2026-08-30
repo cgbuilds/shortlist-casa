@@ -147,7 +147,7 @@ export async function POST(request: Request) {
       const saved = getCsvMeta(user);
       return {
         source: "upload",
-        notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — Run Scoring uses it until you upload a new CSV.${packed.clip}`,
+        notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — ask chat to rescore it until you upload a new CSV.${packed.clip}`,
         results: packed.results,
         totalMatched: packed.totalMatched,
         saved,
@@ -189,7 +189,7 @@ export async function POST(request: Request) {
           {
             error: accountEmpty
               ? RENTCAST_CAP_MESSAGE
-              : `Beta live-search cap reached (${decision.quota.used}/${decision.quota.userLimit}). Run Scoring on the cache or wait until next month.`,
+              : `Beta live-search cap reached (${decision.quota.used}/${decision.quota.userLimit}). Ask chat to rescore the cache or wait until next month.`,
             quota: decision.quota,
             cache: getLiveCache(user.id),
             advice: adviseLiveSearch(user.id, query),

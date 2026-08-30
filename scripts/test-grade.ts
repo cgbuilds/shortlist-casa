@@ -14,6 +14,7 @@ import { rankListings, resultsHeadline, scoreStatusLabel } from "../lib/rank-lis
 import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP, filterListingsByQuery, grantCourtesySearch, isPoliteExtraSearchAsk } from "../lib/listing-cache";
 import { outboundListingLinks } from "../lib/outbound-links";
 import { starterMatrix } from "../lib/starter-profile";
+import { wantsRescore } from "../lib/chat-intent";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -326,6 +327,9 @@ async function main() {
   assert(ticks.at(-1)?.analyzed === 7 && ticks.at(-1)?.processing === 0, "progress ends when all are scored");
   assert(ticks.every((t) => t.totalMatched === 7), "header total stays the full list size while scoring");
   assert(scoreStatusLabel({ analyzed: 20, total: 23, processing: 3 }) === "20/23 scored, 3 processing…", "scoring status copy");
+  assert(wantsRescore("score the list"), "score the list is a rescore ask");
+  assert(wantsRescore("please rescore"), "rescore is a rescore ask");
+  assert(!wantsRescore("pull live listings in Tampa"), "live pull is not a rescore ask");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,

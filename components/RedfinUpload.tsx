@@ -139,8 +139,8 @@ export function RedfinUpload({
       </div>
       {savedFilename && savedCount ? (
         <Fold title={`Saved file · ${savedCount} home${savedCount === 1 ? "" : "s"}`} titleClassName="text-[var(--accent)]">
-          {savedFilename} stays on this account after refresh. Run Scoring (homes bar) uses this list; a live
-          search will not replace it.
+          {savedFilename} stays on this account. Ask chat to rescore after you change must-haves. A live
+          search will not replace this file.
         </Fold>
       ) : null}
       {liveSearch ? (

@@ -4,6 +4,7 @@ import { adviseLiveSearch, grantCourtesySearch, getLiveQuota, isPoliteExtraSearc
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { WHY_GRADE_INSTRUCTIONS } from "@/lib/grade";
 import { queryFromMatrix } from "@/lib/rentcast";
+import { wantsRescore } from "@/lib/chat-intent";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 
 export const SYSTEM_PROMPT = `You are a home-buying coach (default: they want to **buy**, not rent). Users score listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
@@ -39,6 +40,7 @@ When baseline is complete AND the user confirms, call commit_matrix. Tell them t
 ${WHY_GRADE_INSTRUCTIONS}
 
 LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-scores the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.
+If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
 export type { ChatMessage } from "@/lib/types";
@@ -103,6 +105,7 @@ export type ChatResult = {
   commit: boolean;
   livePull?: boolean;
   liveSearch?: boolean;
+  rescore?: boolean;
   usedModel: boolean;
   provider: string;
   model?: string;
@@ -205,6 +208,7 @@ export async function runMatrixChat(
         commit,
         livePull,
         liveSearch,
+        rescore: wantsRescore(userText) && !livePull,
         usedModel: true,
         provider: llm.provider,
         model: llm.model,
@@ -219,6 +223,7 @@ export async function runMatrixChat(
       commit,
       livePull,
       liveSearch,
+      rescore: wantsRescore(userText) && !livePull,
       usedModel: true,
       provider: llm.provider,
       model: llm.model,
@@ -248,6 +253,8 @@ function safeJson(raw: string): Record<string, unknown> {
     return {};
   }
 }
+
+export { wantsRescore } from "@/lib/chat-intent";
 
 function wantsLiveConfirm(text: string, history: ChatMessage[]) {
   if (
@@ -545,11 +552,13 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     const applied = applyTool(working, "preview_live_search", {}, { userId });
     const advice = applied.result as { advice?: string };
     notes.push(advice.advice ?? "Checking live-search quota.");
-  } else if (userId && /grade (the )?cache|re-?grade|search (&|and )grade/.test(text)) {
+  } else if (userId && wantsRescore(text)) {
+    notes.push("Scoring the current list now.");
+  } else if (userId && /search (&|and )grade/.test(text)) {
     liveSearch = true;
     const applied = applyTool(working, "preview_live_search", {}, { userId });
     const advice = applied.result as { advice?: string };
-    notes.push(advice.advice ?? "Scoring the cached list.");
+    notes.push(advice.advice ?? "Scoring the current set.");
   } else if (
     userId &&
     /live search|search live|new (live )?search|another search|rentcast/.test(text)
@@ -589,5 +598,5 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     );
   }
 
-  return { reply: notes.join(" "), matrix: working, commit, livePull, liveSearch, usedModel: false };
+  return { reply: notes.join(" "), matrix: working, commit, livePull, liveSearch, rescore: wantsRescore(userText) && !livePull, usedModel: false };
 }

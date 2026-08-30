@@ -47,6 +47,7 @@ export async function POST(request: Request) {
     commit: result.commit,
     livePull: result.livePull,
     liveSearch: result.liveSearch,
+    rescore: result.rescore,
     usedModel: result.usedModel,
     provider: result.provider,
     model: result.model,

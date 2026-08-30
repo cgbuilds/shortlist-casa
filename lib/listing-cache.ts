@@ -9,7 +9,7 @@ export const LIVE_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
 /** RentCast Developer plan included requests. Never send a call that would overage. */
 export const RENTCAST_HARD_CAP = 50;
 export const RENTCAST_CAP_MESSAGE =
-  "RentCast monthly cap of 50 API requests reached. This app will not send overage calls ($0.20 each). Run Scoring on the cache, upload a Redfin CSV, or wait until next month.";
+  "RentCast monthly cap of 50 API requests reached. This app will not send overage calls ($0.20 each). Ask chat to rescore the cache, upload a Redfin CSV, or wait until next month.";
 
 export type LiveQuota = {
   used: number;
@@ -436,7 +436,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       remaining: quota.remaining,
       userLimit: quota.userLimit,
       workarounds: [],
-      advice: `${coveragePct}% of your cached list (${matches.length}/${cached.listings.length}) still matches. Run Scoring for free — do not spend a live search. ${counter}; ${quota.remaining} left.`,
+      advice: `${coveragePct}% of your cached list (${matches.length}/${cached.listings.length}) still matches. Ask chat to rescore for free — do not spend a live search. ${counter}; ${quota.remaining} left.`,
     };
   }
   if (blocked) {
@@ -451,7 +451,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       remaining: quota.remaining,
       userLimit: quota.userLimit,
       workarounds,
-      advice: `Live search blocked (${counter}; ${account}). ${coveragePct}% of the cached homes still fit. ${workarounds.join(" · ") || "Run Scoring on the cache."} No overage requests will be sent.`,
+      advice: `Live search blocked (${counter}; ${account}). ${coveragePct}% of the cached homes still fit. ${workarounds.join(" · ") || "Ask chat to rescore the cache."} No overage requests will be sent.`,
     };
   }
   return {

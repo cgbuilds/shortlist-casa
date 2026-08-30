@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
+import { wantsRescore } from "@/lib/chat-intent";
 
 const CHAT_STORAGE_KEY = "homestead-chat-messages";
 
@@ -33,16 +34,23 @@ function readStoredMessages(): ChatMessage[] | null {
 
 export function ChatPanel({
   matrix,
-  onMatrix,
+  onChatEvent,
   remaining,
   userLimit = 3,
   scoreProgress,
+  actionNotice,
 }: {
   matrix: UserMatrix;
-  onMatrix: (m: UserMatrix, committed: boolean, extra?: { livePull?: boolean; liveSearch?: boolean }) => void;
+  onChatEvent: (event: {
+    matrix?: UserMatrix;
+    livePull?: boolean;
+    liveSearch?: boolean;
+    rescore?: boolean;
+  }) => Promise<string | void>;
   remaining?: number;
   userLimit?: number;
   scoreProgress?: { analyzed: number; total: number; processing: number } | null;
+  actionNotice?: { id: number; text: string } | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
   const [hydrated, setHydrated] = useState(false);
@@ -61,6 +69,11 @@ export function ChatPanel({
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages, pending, error]);
+
+  useEffect(() => {
+    if (!actionNotice?.text) return;
+    setMessages((prev) => [...prev, { role: "assistant", content: actionNotice.text }]);
+  }, [actionNotice]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -101,12 +114,19 @@ export function ChatPanel({
         error: data.error ?? null,
       });
       if (data.error) setError(data.error);
-      setMessages([...history, { role: "assistant", content: data.reply ?? "Updated." }]);
-      if (data.matrix) {
-        onMatrix(data.matrix, Boolean(data.commit), {
+      const reply = data.reply ?? "Updated.";
+      setMessages([...history, { role: "assistant", content: reply }]);
+      const rescore = Boolean(data.rescore) || wantsRescore(next);
+      if (data.matrix || data.livePull || data.liveSearch || rescore) {
+        const note = await onChatEvent({
+          matrix: data.matrix,
           livePull: Boolean(data.livePull),
           liveSearch: Boolean(data.liveSearch),
+          rescore,
         });
+        if (note) {
+          setMessages((prev) => [...prev, { role: "assistant", content: note }]);
+        }
       }
       if (data.commit) setCommitted(true);
     } catch (err) {
@@ -147,8 +167,8 @@ export function ChatPanel({
             key={i}
             className={
               m.role === "user"
-                ? "ml-8 rounded-2xl bg-[var(--ink)] px-3 py-2 text-[var(--paper)]"
-                : "mr-8 rounded-2xl bg-[var(--paper)] px-3 py-2"
+                ? "ml-8 break-words rounded-2xl bg-[var(--ink)] px-3 py-2 text-[var(--paper)]"
+                : "mr-8 break-words rounded-2xl bg-[var(--paper)] px-3 py-2"
             }
           >
             <ChatMarkdown invert={m.role === "user"}>{m.content}</ChatMarkdown>
@@ -181,7 +201,7 @@ export function ChatPanel({
             if (!pending) void send();
           }}
           placeholder="Tampa, FL · 3 bed · 2 bath · SFR. Enter to send · Shift+Enter for a new line"
-          rows={3}
+          rows={2}
           className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm"
         />
         <button className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" type="submit" disabled={pending}>

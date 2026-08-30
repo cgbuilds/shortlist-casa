@@ -23,7 +23,7 @@ export function ChatSheet({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:justify-end sm:p-6">
+    <div className="fixed inset-0 z-50 flex overflow-hidden sm:items-center sm:justify-end sm:p-6">
       <button
         type="button"
         className="absolute inset-0 bg-[color-mix(in_oklab,var(--ink)_35%,transparent)]"
@@ -33,7 +33,7 @@ export function ChatSheet({
       <div
         role="dialog"
         aria-label="AI assist"
-        className="relative z-10 flex h-[min(88dvh,40rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-[var(--paper-2)] shadow-xl sm:h-[min(36rem,calc(100dvh-4rem))] sm:w-[26rem] sm:rounded-2xl"
+        className="relative z-10 flex h-full max-h-full w-full min-h-0 flex-col overflow-hidden border-[var(--line)] bg-[var(--paper-2)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:border sm:pt-0"
       >
         <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-2.5">
           <p className="text-sm font-medium">AI assist</p>

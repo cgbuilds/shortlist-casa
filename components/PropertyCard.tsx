@@ -16,7 +16,7 @@ export function PropertyCard({
     <article className="rounded-2xl border border-[var(--line)] bg-[var(--paper-2)] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <Link href={`/property/${listing.id}`} className="font-[family-name:var(--font-display)] text-lg hover:underline">
+          <Link href={`/property/${listing.id}`} className="break-words font-[family-name:var(--font-display)] text-lg hover:underline">
             {listing.address}
           </Link>
           <p className="text-sm text-[var(--muted)]">

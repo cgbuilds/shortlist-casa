@@ -11,7 +11,7 @@ import { RedfinUpload } from "@/components/RedfinUpload";
 import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
 import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
-import { postSearch } from "@/lib/search-client";
+import { postSearch, type SearchResponse } from "@/lib/search-client";
 import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
@@ -21,6 +21,20 @@ const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m
 
 type Row = { listing: PropertyListing; grade: GradeResult };
 const BANNER_KEY = "homestead-starter-banner-dismissed";
+
+function confirmScoring(kind: "live" | "cache" | "score", data?: SearchResponse) {
+  if (!data) return "Could not finish that action.";
+  if (data.error) return data.error;
+  const shown = data.results?.length ?? 0;
+  const total = data.totalMatched ?? shown;
+  const head = resultsHeadline(shown, total);
+  if (kind === "live" && data.pulled) {
+    return `Done. Pulled live listings and scored them. ${head}.`;
+  }
+  if (kind === "live") return `Done. Scored the live cache. ${head}.`;
+  if (kind === "cache") return `Done. Scored the current set. ${head}.`;
+  return `Done. Rescored the list. ${head}.`;
+}
 
 export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [matrix, setMatrix] = useState(initialMatrix ?? defaultMatrix());
@@ -44,11 +58,30 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     null
   );
   const [job, setJob] = useState<{ tone: "err"; text: string } | null>(null);
-  const skipMatrixGrade = useRef(true);
+  const [actionNotice, setActionNotice] = useState<{ id: number; text: string } | null>(null);
+  const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
+    body.style.overscrollBehavior = "none";
+    html.style.height = "100%";
+    body.style.height = "100%";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+      html.style.overscrollBehavior = "";
+      body.style.overscrollBehavior = "";
+      html.style.height = "";
+      body.style.height = "";
+    };
   }, []);
 
   const persistMatrix = (m: UserMatrix) => {
@@ -130,15 +163,27 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   async function runLive(m: UserMatrix, force: boolean) {
     setRegrading(true);
     try {
-      await runScoring({ source: "live", draft: m, force });
+      return await runScoring({ source: "live", draft: m, force });
     } catch (err) {
-      setJob({
-        tone: "err",
-        text: err instanceof Error ? err.message : "Live search failed.",
-      });
+      const text = err instanceof Error ? err.message : "Live search failed.";
+      setJob({ tone: "err", text });
+      return { error: text } as SearchResponse;
     } finally {
       setRegrading(false);
     }
+  }
+
+  async function onChatEvent(event: {
+    matrix?: UserMatrix;
+    livePull?: boolean;
+    liveSearch?: boolean;
+    rescore?: boolean;
+  }) {
+    const draft = event.matrix ?? matrix;
+    if (event.matrix) persistMatrix(event.matrix);
+    if (event.livePull) return confirmScoring("live", await runLive(draft, true));
+    if (event.liveSearch) return confirmScoring("cache", await runLive(draft, false));
+    if (event.rescore || event.matrix) return confirmScoring("score", await refreshGrades(draft));
   }
 
   useEffect(() => {
@@ -187,16 +232,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (skipMatrixGrade.current) {
-      skipMatrixGrade.current = false;
-      return;
-    }
-    const t = window.setTimeout(() => void refreshGrades(matrix).catch(() => undefined), 700);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrix]);
-
   const progressLine = scoreProgress && scoreProgress.total > 0 ? scoreStatusLabel(scoreProgress) : "";
 
   return (
@@ -243,8 +278,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">{job.text}</p>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <div className="relative min-h-[12rem] min-w-0 flex-[1.2] overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <div className="relative min-h-0 min-w-0 flex-1 basis-0 overflow-hidden">
           <ResultsMap
             rows={rows}
             selectedId={selectedId}
@@ -255,7 +290,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             <ChatFab className="absolute bottom-4 right-4 z-20" onClick={() => setChatOpen(true)} />
           )}
         </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 md:w-[22rem] md:flex-none md:shrink-0 xl:w-[26rem]">
+        <div className="min-h-0 flex-1 basis-0 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain p-3 md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 xl:w-[26rem]">
           {rows.map((row) => (
             <div
               key={row.listing.id}
@@ -274,20 +309,17 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       </div>
 
       <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)}>
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <ChatPanel
           matrix={matrix}
           remaining={remaining}
           userLimit={userLimit}
           scoreProgress={scoreProgress}
-          onMatrix={(m, _commit, extra) => {
-            persistMatrix(m);
-            if (extra?.livePull) void runLive(m, true);
-            else if (extra?.liveSearch) void runLive(m, false);
-          }}
+          actionNotice={actionNotice}
+          onChatEvent={onChatEvent}
         />
         </div>
-        <div className="max-h-40 shrink-0 overflow-y-auto border-t border-[var(--line)]">
+        <div className="max-h-[min(12rem,32svh)] shrink-0 overflow-y-auto overscroll-contain border-t border-[var(--line)]">
           <RedfinUpload
             compact
             heading="Actions"
@@ -305,6 +337,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             onGraded={(data) => {
               setScoreProgress(null);
               applyGrade(data as Parameters<typeof applyGrade>[0]);
+              noticeId.current += 1;
+              const kind = data.pulled || data.source === "rentcast" ? "live" : "score";
+              setActionNotice({
+                id: noticeId.current,
+                text: data.error
+                  ? data.error
+                  : confirmScoring(kind, data as SearchResponse),
+              });
+              setChatOpen(true);
             }}
             onScoreProgress={onScoreProgress}
           />

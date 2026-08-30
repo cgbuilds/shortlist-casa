@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+html,
+body {
+  overflow-x: hidden;
+}
+
 :root {
   --paper: #f4efe6;
   --paper-2: #fffdf8;
