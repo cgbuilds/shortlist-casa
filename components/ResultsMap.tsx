@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { GradeResult, PropertyListing } from "@/lib/types";
+import { formatAskPrice } from "@/lib/listing-market";
 import { outboundListingLinks } from "@/lib/outbound-links";
 import { gradeCaption } from "@/lib/grade";
 
@@ -72,7 +73,7 @@ export function ResultsMap({
                 <p className="font-semibold">{row.listing.address}</p>
                 <p>
                   {gradeCaption(row.grade).score} {gradeCaption(row.grade).word} · {row.listing.beds} bd ·{" "}
-                  {row.listing.listPrice ? `$${row.listing.listPrice.toLocaleString()}` : ""}
+                  {row.listing.listPrice ? formatAskPrice(row.listing) : ""}
                 </p>
                 <p className="mt-1 flex gap-2">
                   {links.map((l) => (

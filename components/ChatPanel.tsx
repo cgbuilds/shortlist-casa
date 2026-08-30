@@ -27,7 +27,7 @@ export function ChatPanel({
         {
           role: "assistant",
           content:
-            "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
+          "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. We look for homes to buy unless you switch to rent. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
         },
       ];
     }
@@ -44,7 +44,7 @@ export function ChatPanel({
       {
         role: "assistant",
         content:
-          "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
+          "Start with the must-haves: general area (e.g. Tampa, FL), min beds, min baths, and property type. We look for homes to buy unless you switch to rent. After those, add softer gates — walkable local shops, a coffee shop, or drainage even if you are in a flood zone.",
       },
     ];
   });

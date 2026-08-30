@@ -1,7 +1,7 @@
 import { CATALOG, CATALOG_VERSION, defaultMatrix, catalogById, isLegacyAllowlist, baselineStatus } from "@/kb/catalog";
 import { adviseLiveSearch } from "@/lib/listing-cache";
 import { queryFromMatrix } from "@/lib/rentcast";
-import type { DimensionKnobs, ManualRubric, UnknownPolicy, UserMatrix } from "@/lib/types";
+import type { DimensionKnobs, ListingIntent, ManualRubric, UnknownPolicy, UserMatrix } from "@/lib/types";
 
 const ALLOWED_KNOB_KEYS = new Set([
   "enabled",
@@ -27,6 +27,7 @@ export function ensureMatrix(input?: Partial<UserMatrix> | null): UserMatrix {
     ...input,
     catalogVersion: CATALOG_VERSION,
     searchArea: legacy ? "" : (input.searchArea ?? base.searchArea),
+    intent: input.intent === "rent" ? "rent" : "buy",
     budget: { ...base.budget, ...input.budget },
     dimensions: { ...base.dimensions, ...input.dimensions },
     locationAllowlist: legacy ? [] : (input.locationAllowlist ?? base.locationAllowlist),
@@ -64,9 +65,10 @@ export function setBudget(
     unknownPolicy?: UnknownPolicy;
     locationAllowlist?: string[];
     searchArea?: string;
+    intent?: ListingIntent;
   }
 ): UserMatrix {
-  const { unknownPolicy, locationAllowlist: allowIn, searchArea, ...budgetPatch } = patch;
+  const { unknownPolicy, locationAllowlist: allowIn, searchArea, intent, ...budgetPatch } = patch;
   const locationAllowlist = allowIn
     ? allowIn.map((a) => a.trim()).filter((a) => a.length >= 2 && a.length <= 48)
     : matrix.locationAllowlist;
@@ -74,6 +76,7 @@ export function setBudget(
     ...matrix,
     unknownPolicy: unknownPolicy ?? matrix.unknownPolicy,
     searchArea: searchArea != null ? searchArea.trim() : matrix.searchArea,
+    intent: intent === "rent" || intent === "buy" ? intent : matrix.intent,
     budget: { ...matrix.budget, ...budgetPatch },
     locationAllowlist,
   };
@@ -101,6 +104,7 @@ export function previewMatrix(matrix: UserMatrix) {
     catalogVersion: matrix.catalogVersion,
     unknownPolicy: matrix.unknownPolicy,
     searchArea: matrix.searchArea,
+    intent: matrix.intent,
     baseline: baselineStatus(matrix),
     budget: matrix.budget,
     locationAllowlist: matrix.locationAllowlist,
@@ -150,11 +154,12 @@ export const CHAT_TOOLS = [
     type: "function" as const,
     function: {
       name: "set_budget",
-      description: "Set search area, neighborhood allowlist, and money caps. Named cities go in locationAllowlist and become the live-search center (St. Petersburg + Clearwater, not Tampa). Use searchArea for the primary city/metro only when they asked for that place.",
+      description: "Set search area, buy vs rent, neighborhood allowlist, and money caps. Default is buy (for-sale listings). Named cities go in locationAllowlist and become the live-search center (St. Petersburg + Clearwater, not Tampa). Use searchArea for the primary city/metro only when they asked for that place.",
       parameters: {
         type: "object",
         properties: {
           searchArea: { type: "string", description: "Metro / general area, e.g. Tampa, FL" },
+          intent: { type: "string", enum: ["buy", "rent"], description: "buy = for-sale listings (default). rent = long-term rentals. Switching needs a new live pull." },
           maxPrice: { type: "number" },
           maxPitia: { type: "number" },
           minMonthlySlack: { type: "number" },
@@ -258,13 +263,19 @@ export function applyTool(
     case "set_budget": {
       const next = setBudget(
         matrix,
-        args as UserMatrix["budget"] & { locationAllowlist?: string[]; searchArea?: string; unknownPolicy?: UnknownPolicy }
+        args as UserMatrix["budget"] & {
+          locationAllowlist?: string[];
+          searchArea?: string;
+          unknownPolicy?: UnknownPolicy;
+          intent?: ListingIntent;
+        }
       );
       return {
         matrix: next,
         result: {
           ok: true,
           searchArea: next.searchArea,
+          intent: next.intent,
           locationAllowlist: next.locationAllowlist,
           budget: next.budget,
         },

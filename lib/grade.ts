@@ -1,4 +1,5 @@
 import { CATALOG, catalogById, parseSearchArea, placesMatch } from "@/kb/catalog";
+import { RENT_PRICE_CEILING } from "@/lib/listing-market";
 import { inferVibe } from "@/lib/osm-amenities";
 import type {
   DimensionScore,
@@ -22,6 +23,7 @@ function unknownScore(
 }
 
 export function estimatePitia(listing: PropertyListing, matrix: UserMatrix): number | null {
+  if (matrix.intent === "rent") return listing.listPrice;
   if (!listing.listPrice) return null;
   const down = (matrix.budget.downPaymentPct ?? 5) / 100;
   const rate = (matrix.budget.ratePct ?? 6.5) / 100 / 12;
@@ -439,15 +441,43 @@ function evaluateDimension(
       const cap = matrix.budget.maxPrice ?? listing.listPrice;
       const ratio = listing.listPrice / cap;
       const score = ratio <= 0.9 ? 100 : ratio <= 1 ? 80 : ratio <= 1.08 ? 40 : 10;
+      const rent = matrix.intent === "rent";
       return {
         id,
         score,
         unknown: false,
         mustHaveFailed: !!knobs.mustHave && listing.listPrice > cap,
-        reason: `$${listing.listPrice.toLocaleString()} vs cap $${cap.toLocaleString()}`,
+        reason: rent
+          ? `$${listing.listPrice.toLocaleString()}/mo vs cap $${cap.toLocaleString()}/mo`
+          : `$${listing.listPrice.toLocaleString()} vs cap $${cap.toLocaleString()}`,
       };
     }
     case "pitia_slack": {
+      if (matrix.intent === "rent") {
+        if (!listing.listPrice) return { id, ...unknownScore(matrix, "Rent unknown"), mustHaveFailed: false };
+        const cap =
+          matrix.budget.maxPitia ??
+          (matrix.budget.maxPrice != null && matrix.budget.maxPrice < RENT_PRICE_CEILING
+            ? matrix.budget.maxPrice
+            : null);
+        if (cap == null) {
+          return { id, ...unknownScore(matrix, "Set a monthly rent cap in chat"), mustHaveFailed: false };
+        }
+        const slack = cap - listing.listPrice;
+        const slackTarget = matrix.budget.minMonthlySlack ?? 0;
+        let score = 50;
+        if (slack >= slackTarget && slackTarget > 0) score = 90;
+        else if (slack >= 0) score = 70;
+        else if (slack >= -300) score = 40;
+        else score = 15;
+        return {
+          id,
+          score,
+          unknown: false,
+          mustHaveFailed: !!knobs.mustHave && slack < slackTarget,
+          reason: `Rent $${listing.listPrice.toLocaleString()}/mo vs cap $${cap.toLocaleString()}/mo`,
+        };
+      }
       const pitia = estimatePitia(listing, matrix);
       if (pitia == null) return { id, ...unknownScore(matrix, "Cannot estimate PITIA"), mustHaveFailed: false };
       const max = matrix.budget.maxPitia ?? pitia;
@@ -610,6 +640,7 @@ export function grade(listing: PropertyListing, matrix: UserMatrix): GradeResult
     perDimension,
     estimatedPitia: pitia,
     monthlySlack,
+    costKind: matrix.intent === "rent" ? "rent" : "pitia",
   };
 }
 

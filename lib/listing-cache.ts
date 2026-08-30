@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
+import { listingMarket } from "@/lib/listing-market";
 import type { PropertyListing } from "@/lib/types";
 import type { SearchQuery } from "@/lib/rentcast";
 
@@ -147,6 +148,7 @@ export function liveQueryKey(query: SearchQuery) {
     minSqft: query.minSqft ?? "",
     maxPrice: query.maxPrice ?? "",
     propertyType: query.propertyType ?? "",
+    market: query.market ?? "sale",
   });
 }
 
@@ -158,6 +160,7 @@ export function canReusePull(cached: SearchQuery, next: SearchQuery) {
   if ((cached.radius ?? "") !== (next.radius ?? "")) return false;
   if ((cached.status ?? "Active") !== (next.status ?? "Active")) return false;
   if ((cached.propertyType ?? "") !== (next.propertyType ?? "")) return false;
+  if ((cached.market ?? "sale") !== (next.market ?? "sale")) return false;
   if ((cached.minBeds ?? 0) > (next.minBeds ?? 0)) return false;
   if ((cached.minBaths ?? 0) > (next.minBaths ?? 0)) return false;
   if ((cached.minSqft ?? 0) > (next.minSqft ?? 0)) return false;
@@ -240,6 +243,7 @@ export function filterListingsByQuery(listings: PropertyListing[], query: Search
     if (query.minBaths && (l.baths ?? 0) < query.minBaths) return false;
     if (query.minSqft && (l.sqft ?? 0) < query.minSqft) return false;
     if (query.maxPrice && (l.listPrice ?? 0) > query.maxPrice) return false;
+    if ((query.market ?? "sale") !== listingMarket(l)) return false;
     return true;
   });
 }
@@ -321,6 +325,13 @@ export function liveWorkarounds(cached: SearchQuery, next: SearchQuery): string[
   }
   if ((cached.propertyType ?? "") !== (next.propertyType ?? "")) {
     tips.push(`Stay on ${cached.propertyType || "the current property type"}`);
+  }
+  if ((cached.market ?? "sale") !== (next.market ?? "sale")) {
+    tips.push(
+      (cached.market ?? "sale") === "sale"
+        ? "Stay on homes for sale instead of switching to rent"
+        : "Stay on rentals instead of switching to buy"
+    );
   }
   return tips;
 }

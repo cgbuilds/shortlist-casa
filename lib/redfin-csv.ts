@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import type { PropertyListing, PropertyType } from "@/lib/types";
+import { inferMarketFromCsv } from "@/lib/listing-market";
 import { slugAddress } from "@/data/listings";
 
 function parseCsv(text: string): string[][] {
@@ -127,6 +128,7 @@ export function parseRedfinCsv(text: string): PropertyListing[] {
       mls: rec.mls || null,
       saleType: rec.saleType || null,
       pricePerSqft: num(rec.ppsqft),
+      market: inferMarketFromCsv(rec.status, rec.saleType),
       facts: {
         propertyType,
         hoa: hoa != null ? hoa > 0 : null,

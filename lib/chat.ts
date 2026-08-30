@@ -5,10 +5,12 @@ import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { queryFromMatrix } from "@/lib/rentcast";
 import type { UserMatrix } from "@/lib/types";
 
-export const SYSTEM_PROMPT = `You are a home-buying coach. Users grade listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
+export const SYSTEM_PROMPT = `You are a home-buying coach (default: they want to **buy**, not rent). Users grade listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
 Never say "matrix" to the user — say must-haves or home profile.
 
 You may add a manual rubric for qualitative extras.
+
+LOOKING TO BUY vs RENT: Default intent is buy. Live search uses for-sale listings. Only call set_budget intent "rent" if they clearly want to rent. Switching buy↔rent needs a new live pull (confirm first). Recap "Looking to buy" or "Looking to rent". For rent, maxPrice is monthly rent, not a purchase price.
 
 BASELINE FIRST — do not skip this, and do not commit until baseline is complete:
 1. General area. If they name cities (St. Petersburg, Clearwater, Valrico), put those in locationAllowlist and set searchArea to the primary city + state (e.g. "St. Petersburg, FL") — not Tampa — unless they actually asked for Tampa. Live search follows the named cities. Only use searchArea "Tampa, FL" with an empty allowlist when they want the whole Tampa metro. Never copy a default neighborhood list.
@@ -253,19 +255,39 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
   let livePull = false;
   let liveSearch = false;
 
+  const wantsRent =
+    /\b(for rent|to rent|looking to rent|want to rent|want rentals|rental search|rent a (condo|home|townhouse|apartment))\b/.test(
+      text
+    ) && !/\b(buy|buying|purchase|for sale|to own)\b/.test(text);
+  const wantsBuy = /\b(buy|buying|purchase|for sale|to own|not rent)\b/.test(text);
+  if (wantsRent && working.intent !== "rent") {
+    working = applyTool(working, "set_budget", { intent: "rent" }).matrix;
+    notes.push("Switched to rent. A new live search is needed for rental listings.");
+  } else if (wantsBuy && working.intent !== "buy") {
+    working = applyTool(working, "set_budget", { intent: "buy" }).matrix;
+    notes.push("Switched back to buy (homes for sale).");
+  }
+
+  const monthlyAsk =
+    working.intent === "rent" || /\/\s*mo|per month|a month|monthly rent|rent cap/.test(text);
   const price =
     userText.match(/\$?\s*(\d{3,4})\s*k\b/i) ||
     userText.match(/\$(\d{3,3}(?:,\d{3})+)/) ||
-    userText.match(/\b(\d{3}(?:,\d{3}){1,2}|\d{6,7})\b/);
-  if (text.includes("budget") || text.includes("max price") || text.includes("cap") || (price && (text.includes("price") || text.includes("$")))) {
+    userText.match(/\b(\d{3}(?:,\d{3}){1,2}|\d{6,7})\b/) ||
+    (monthlyAsk ? userText.match(/\$(\d{3,5})\b/) || userText.match(/(\d{3,5})\s*(?:\/\s*mo|a month)/i) : null);
+  if (text.includes("budget") || text.includes("max price") || text.includes("max rent") || text.includes("cap") || (price && (text.includes("price") || text.includes("$") || text.includes("rent")))) {
     let maxPrice = working.budget.maxPrice;
     if (price) {
       const n = Number(price[1].replace(/,/g, ""));
-      maxPrice = n < 10_000 ? n * 1000 : n;
+      maxPrice = monthlyAsk || working.intent === "rent" ? n : n < 10_000 ? n * 1000 : n;
     }
     const applied = applyTool(working, "set_budget", { maxPrice });
     working = applied.matrix;
-    notes.push(`Max price set to $${maxPrice?.toLocaleString()}.`);
+    notes.push(
+      working.intent === "rent"
+        ? `Max rent set to $${maxPrice?.toLocaleString()}/mo.`
+        : `Max price set to $${maxPrice?.toLocaleString()}.`
+    );
   }
 
   if (/\b(2500|2,500)\b/.test(text) || text.includes("sq ft") || text.includes("sqft")) {

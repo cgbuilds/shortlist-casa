@@ -47,6 +47,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (Number.isFinite(stored) && stored >= 160) setChatH(stored);
   }, []);
 
+  const persistMatrix = (m: UserMatrix) => {
+    setMatrix(m);
+    void fetch("/api/matrix", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matrix: m }),
+    }).catch(() => undefined);
+  };
+
   const applySaved = (saved?: { filename: string; count: number } | null) => {
     if (!saved) return;
     setSavedFilename(saved.filename);
@@ -165,12 +174,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             remaining={remaining}
             userLimit={userLimit}
             onMatrix={(m, _commit, extra) => {
-              setMatrix(m);
-              void fetch("/api/matrix", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ matrix: m }),
-              }).catch(() => undefined);
+              persistMatrix(m);
               if (extra?.livePull) void runLive(m, true);
               else if (extra?.liveSearch) void runLive(m, false);
             }}
@@ -232,10 +236,33 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
           <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
             {rows.length ? `${rows.length} homes` : "No homes yet"}
+            {` · ${matrix.intent === "rent" ? "Rent" : "Buy"}`}
             {matrix.searchArea ? ` · Must-haves: ${matrix.searchArea}` : " · No must-haves saved yet"}
             {notice ? ` · ${notice}` : ""}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border border-[var(--line)] text-sm" role="group" aria-label="Buy or rent">
+              <button
+                type="button"
+                className={`px-3 py-1.5 ${matrix.intent !== "rent" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
+                onClick={() => {
+                  if (matrix.intent === "buy") return;
+                  persistMatrix({ ...matrix, intent: "buy" });
+                }}
+              >
+                Buy
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 ${matrix.intent === "rent" ? "bg-[var(--ink)] text-[var(--paper)]" : ""}`}
+                onClick={() => {
+                  if (matrix.intent === "rent") return;
+                  persistMatrix({ ...matrix, intent: "rent" });
+                }}
+              >
+                Rent
+              </button>
+            </div>
             <button
               type="button"
               className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm text-white disabled:opacity-50"

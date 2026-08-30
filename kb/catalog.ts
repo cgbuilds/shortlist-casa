@@ -374,6 +374,7 @@ export function defaultMatrix(): UserMatrix {
     catalogVersion: CATALOG_VERSION,
     unknownPolicy: "skip",
     searchArea: "",
+    intent: "buy",
     budget: {
       downPaymentPct: 5,
       ratePct: 6.5,

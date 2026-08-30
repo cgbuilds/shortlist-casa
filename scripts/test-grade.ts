@@ -10,7 +10,8 @@ import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
 import { queryFromMatrix } from "../lib/rentcast";
 import { inferVibe } from "../lib/osm-amenities";
-import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP } from "../lib/listing-cache";
+import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP, filterListingsByQuery } from "../lib/listing-cache";
+import { outboundListingLinks } from "../lib/outbound-links";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -33,6 +34,7 @@ async function main() {
   const matrix = defaultMatrix();
   assert(matrix.locationAllowlist.length === 0, "no hardcoded areas");
   assert(!matrix.searchArea, "search area empty until chat");
+  assert(matrix.intent === "buy", "default is buy");
   const sample = favorites.find((l) => l.address.includes("Eagle Bluff"))!;
   const g = grade(sample, matrix);
   assert(!g.mustHaveFailed, "unconfigured matrix should not fail must-haves");
@@ -89,6 +91,19 @@ async function main() {
   assert(liveQ.radius === 22, "metro uses a radius, not Tampa-city-only");
   assert(liveQ.minBeds === 3, "beds from baseline");
   assert(liveQ.propertyType === "Single Family", "maps sfr to RentCast type");
+  assert(liveQ.market === "sale", "live search defaults to for-sale");
+  const rentQ = queryFromMatrix(applyTool(liveMx, "set_budget", { intent: "rent" }).matrix);
+  assert(rentQ.market === "rental", "rent uses the rental feed");
+  assert(!canReusePull(liveQ, rentQ), "buy vs rent needs a new live pull");
+  const rentalRow = { ...sample, id: "rental-condo", listPrice: 2400, status: "For Rent", market: "rental" as const };
+  assert(
+    filterListingsByQuery([sample, rentalRow], liveQ).every((l) => l.id !== "rental-condo"),
+    "rent-priced condos drop from a buy search"
+  );
+  const zillowSale = outboundListingLinks(sample).find((l) => l.name === "Zillow")?.href ?? "";
+  assert(zillowSale.includes("/for_sale/"), `Zillow buy link should be for_sale, got ${zillowSale}`);
+  const zillowRent = outboundListingLinks(rentalRow).find((l) => l.name === "Zillow")?.href ?? "";
+  assert(zillowRent.includes("/for_rent/"), "Zillow rent link should be for_rent");
   const valricoQ = queryFromMatrix(
     applyTool(liveMx, "set_budget", { searchArea: "Tampa, FL", locationAllowlist: ["Valrico"] }).matrix
   );
@@ -230,6 +245,9 @@ async function main() {
   assert(mom.matrix.dimensions.laundry.mustHave, "laundry must");
   assert(mom.matrix.dimensions.flood.enabled, "flood on");
   assert(mom.commit, "committed");
+
+  const rentChat = await runMatrixChat(matrix, [], "I want to rent a condo");
+  assert(rentChat.matrix.intent === "rent", "chat can switch to rent");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,

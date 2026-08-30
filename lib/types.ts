@@ -4,6 +4,10 @@ export type ConstructionType = "block" | "frame" | "other";
 
 export type PropertyType = "sfr" | "townhouse" | "condo" | "multi" | "other";
 
+export type ListingIntent = "buy" | "rent";
+
+export type ListingMarket = "sale" | "rental";
+
 export type NeighborhoodVibe = "sleepy" | "local_center" | "busy";
 
 export type DrainageQuality = "high" | "mixed" | "poor";
@@ -58,6 +62,8 @@ export type PropertyListing = {
   mls?: string | null;
   saleType?: string | null;
   pricePerSqft?: number | null;
+  /** sale = for-sale listing; rental = for-rent. Inferred from price/status when omitted. */
+  market?: ListingMarket;
   facts: PropertyFacts;
 };
 
@@ -92,6 +98,8 @@ export type UserMatrix = {
   catalogVersion: string;
   unknownPolicy: UnknownPolicy;
   searchArea: string;
+  /** Default buy. Rent is optional — live search uses a different feed. */
+  intent: ListingIntent;
   budget: BudgetSettings;
   locationAllowlist: string[];
   dimensions: Record<string, DimensionKnobs>;
@@ -117,6 +125,7 @@ export type GradeResult = {
   perDimension: DimensionScore[];
   estimatedPitia: number | null;
   monthlySlack: number | null;
+  costKind?: "pitia" | "rent";
 };
 
 export type CatalogDimension = {

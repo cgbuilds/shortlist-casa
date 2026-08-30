@@ -248,9 +248,9 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
-    const working = liveList?.length
-      ? filterListingsByQuery(listings, queryFromMatrix(matrix))
-      : filterList(listings, body);
+    const query = queryFromMatrix(matrix);
+    const scoped = liveList?.length ? listings : filterList(listings, body);
+    const working = filterListingsByQuery(scoped, query);
     const ranked = await rank(working, matrix);
     await saveSearch(user, { source: "regrade" }, ranked.map((r) => r.listing.id));
     for (const row of ranked) await saveGrade(user, row.listing, row.grade);
@@ -259,9 +259,13 @@ export async function POST(request: Request) {
     const quota = getLiveQuota(user.id);
     const from = liveList?.length ? "live cache" : `saved file ${saved?.filename ?? "CSV"}`;
     const notice =
-      incomplete === ranked.length && ranked.length
-        ? `Re-graded ${ranked.length} homes from ${from}, but every score is incomplete — your must-haves are not set, or listings lack year/type/price.`
-        : `Re-graded ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.`;
+      !ranked.length && scoped.length
+        ? matrix.intent === "rent"
+          ? "This list is homes for sale. Confirm a live pull to load rentals (uses 1 of 3), or switch back to Buy."
+          : "No for-sale homes in this list — they look like rentals. Stay on Buy and confirm a live pull, or switch to Rent."
+        : incomplete === ranked.length && ranked.length
+          ? `Re-graded ${ranked.length} homes from ${from}, but every score is incomplete — your must-haves are not set, or listings lack year/type/price.`
+          : `Re-graded ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.`;
     return NextResponse.json({
       source: liveList?.length ? "cache" : "saved",
       notice,

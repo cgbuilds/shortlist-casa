@@ -15,6 +15,9 @@ export function MatrixPreview({ matrix }: { matrix: UserMatrix }) {
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
           Baseline must-haves
         </h3>
+        <p className="mb-2 text-xs font-medium">
+          Looking to {matrix.intent === "rent" ? "rent" : "buy"}
+        </p>
         <ul className="space-y-1">
           {baseline.gaps.map((g) => (
             <li key={g.id} className="flex justify-between gap-2">

@@ -2,7 +2,8 @@ import { displayCityName, normalizePlaceName, parseSearchArea } from "@/kb/catal
 import { findRedfinListing } from "@/lib/redfin-csv";
 import { SEED_LISTINGS, slugAddress } from "@/data/listings";
 import { RENTCAST_CAP_MESSAGE, reserveRentcastCall, withGlobalQueue } from "@/lib/listing-cache";
-import type { PropertyListing, PropertyType, UserMatrix } from "@/lib/types";
+import { listingMarket, marketFromIntent } from "@/lib/listing-market";
+import type { ListingMarket, PropertyListing, PropertyType, UserMatrix } from "@/lib/types";
 
 type RentCastListing = {
   id?: string;
@@ -53,7 +54,7 @@ function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): Prop
   const state = raw.state || "";
   const zip = raw.zipCode || "";
   const hoaFee = raw.hoa?.fee;
-  return {
+  const listing: PropertyListing = {
     id: raw.id || slugAddress(address, city, state),
     address,
     city,
@@ -70,6 +71,7 @@ function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): Prop
     status: raw.status,
     mls: raw.mlsNumber || extra?.mls || null,
     hoaMonthly: hoaFee ?? extra?.hoaMonthly ?? null,
+    market: extra?.market,
     facts: {
       ...extra?.facts,
       propertyType: mapRcType(raw.propertyType),
@@ -77,6 +79,8 @@ function toListing(raw: RentCastListing, extra?: Partial<PropertyListing>): Prop
       schoolArea: extra?.facts?.schoolArea ?? (city || null),
     },
   };
+  listing.market = extra?.market ?? listingMarket(listing);
+  return listing;
 }
 
 async function rentcast(path: string) {
@@ -110,6 +114,7 @@ export type SearchQuery = {
   address?: string;
   radius?: number;
   propertyType?: string;
+  market?: ListingMarket;
 };
 
 export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
@@ -123,6 +128,7 @@ export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
   const named = matrix.locationAllowlist.filter((a) => a.trim() && !/\bhs\b/i.test(a));
   const query: SearchQuery = {
     status: "Active",
+    market: marketFromIntent(matrix.intent),
     minBeds: beds?.enabled && beds.min != null ? beds.min : undefined,
     minBaths: baths?.enabled && baths.min != null ? baths.min : undefined,
     minSqft: sqft?.enabled && sqft.min != null ? sqft.min : undefined,
@@ -184,9 +190,13 @@ export async function searchListings(query: SearchQuery): Promise<{
     if (query.minSqft != null) params.set("squareFootage", `${query.minSqft}:*`);
     if (query.maxPrice != null) params.set("price", `*:${query.maxPrice}`);
     if (query.propertyType) params.set("propertyType", query.propertyType);
+    const market = query.market === "rental" ? "rental" : "sale";
+    const path = market === "rental" ? "/listings/rental/long-term" : "/listings/sale";
     try {
-      const data = (await rentcast(`/listings/sale?${params.toString()}`)) as RentCastListing[];
-      const listings = (Array.isArray(data) ? data : []).map((r) => toListing(r));
+      const data = (await rentcast(`${path}?${params.toString()}`)) as RentCastListing[];
+      const listings = (Array.isArray(data) ? data : [])
+        .map((r) => toListing(r, { market }))
+        .filter((l) => listingMarket(l) === market);
       return { listings, source: "rentcast" };
     } catch (err) {
       const message = err instanceof Error ? err.message : "error";
@@ -208,7 +218,9 @@ export async function searchListings(query: SearchQuery): Promise<{
 }
 
 function filterSeed(query: SearchQuery): PropertyListing[] {
+  const market = query.market === "rental" ? "rental" : "sale";
   return SEED_LISTINGS.filter((l) => {
+    if (listingMarket({ ...l, market: l.market ?? "sale" }) !== market) return false;
     if (query.city && !l.city.toLowerCase().includes(query.city.toLowerCase())) return false;
     if (query.state && l.state.toLowerCase() !== query.state.toLowerCase()) return false;
     if (query.zip && l.zip !== query.zip) return false;

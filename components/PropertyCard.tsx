@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatAskPrice, marketLabel, listingMarket } from "@/lib/listing-market";
 import type { GradeResult, PropertyListing } from "@/lib/types";
 import { outboundListingLinks } from "@/lib/outbound-links";
 import { gradeCaption } from "@/lib/grade";
@@ -30,9 +31,9 @@ export function PropertyCard({
       <p className="mt-3 text-sm">
         {listing.facts.propertyType ?? "home"} · {listing.beds ?? "—"} bd · {listing.baths ?? "—"} ba ·{" "}
         {listing.sqft?.toLocaleString() ?? "—"} sf
-        {listing.listPrice ? ` · $${listing.listPrice.toLocaleString()}` : ""}
+        {listing.listPrice ? ` · ${formatAskPrice(listing)}` : ""}
         {listing.daysOnMarket != null ? ` · ${listing.daysOnMarket} DOM` : ""}
-        {listing.status ? ` · ${listing.status}` : ""}
+        {` · ${marketLabel(listingMarket(listing))}`}
       </p>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         {links.map((l) => (

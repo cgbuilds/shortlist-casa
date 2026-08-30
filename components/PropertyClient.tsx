@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FactsForm } from "@/components/FactsForm";
 import { GradeBreakdown } from "@/components/GradeBreakdown";
 import { ScorePill } from "@/components/PropertyCard";
+import { formatAskPrice, marketLabel, listingMarket } from "@/lib/listing-market";
 import { outboundListingLinks } from "@/lib/outbound-links";
 import type { GradeResult, PropertyListing } from "@/lib/types";
 
@@ -31,7 +32,8 @@ export function PropertyClient({
       </div>
       <p>
         {listing.beds ?? "—"} bd · {listing.baths ?? "—"} ba · {listing.sqft?.toLocaleString() ?? "—"} sf ·{" "}
-        {listing.listPrice ? `$${listing.listPrice.toLocaleString()}` : "price n/a"}
+        {listing.listPrice ? formatAskPrice(listing) : "price n/a"}
+        {` · ${marketLabel(listingMarket(listing))}`}
       </p>
       <div className="flex flex-wrap gap-2 text-sm">
         {links.map((l) => (

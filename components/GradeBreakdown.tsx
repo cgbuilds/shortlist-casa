@@ -4,7 +4,13 @@ export function GradeBreakdown({ grade }: { grade: GradeResult }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-[var(--muted)]">
-        {grade.estimatedPitia != null ? `Est. PITIA $${grade.estimatedPitia.toLocaleString()}/mo` : "PITIA n/a"}
+        {grade.costKind === "rent"
+          ? grade.estimatedPitia != null
+            ? `Rent $${grade.estimatedPitia.toLocaleString()}/mo`
+            : "Rent n/a"
+          : grade.estimatedPitia != null
+            ? `Est. PITIA $${grade.estimatedPitia.toLocaleString()}/mo`
+            : "PITIA n/a"}
         {grade.monthlySlack != null ? ` · slack $${grade.monthlySlack.toLocaleString()}` : ""}
       </p>
       <div className="overflow-hidden rounded-xl border border-[var(--line)]">
