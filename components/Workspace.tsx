@@ -228,7 +228,16 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
         <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">{resultsHeadline(rows.length, totalMatched)}</p>
-        {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
+        <div className="flex items-center gap-2">
+          {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm"
+            onClick={() => setChatOpen(true)}
+          >
+            Chat
+          </button>
+        </div>
       </div>
       {job?.tone === "err" ? (
         <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">{job.text}</p>
@@ -242,6 +251,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             onSelect={setSelectedId}
             layoutTick={chatOpen ? "chat" : "map"}
           />
+          {chatOpen ? null : (
+            <ChatFab className="absolute bottom-4 right-4 z-20" onClick={() => setChatOpen(true)} />
+          )}
         </div>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 md:w-[22rem] md:flex-none md:shrink-0 xl:w-[26rem]">
           {rows.map((row) => (
@@ -261,7 +273,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         </div>
       </div>
 
-      {chatOpen ? null : <ChatFab onClick={() => setChatOpen(true)} />}
+      {chatOpen ? null : null}
       <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)}>
         <div className="flex min-h-0 flex-1 flex-col">
         <ChatPanel
