@@ -17,12 +17,13 @@ BASELINE FIRST — do not skip this, and do not commit until baseline is complet
 
 After baseline is saved, ask: "Any custom must-haves?" and only then enable add-ons.
 
-SOFT / SUBJECTIVE GATES (these are first-class catalog dimensions — do not ignore them):
-- neighborhood_vibe prefs.prefer local_center = not sleepy/laid-back, not a busy strip, walkable local city-center
-- local_amenities prefs.requireCoffee true (mustHave if they need a café) and requireShops true for everyday shops
-- walkable for a short walk to those places
-- flood vs flood_resilience: if they accept living in FEMA AE/VE, set flood prefs.acceptSfha true and mustHave false. Enable flood_resilience (street ponding / sewage backup) as the must-have. If they simply want to avoid flood zones, keep flood mustHave true.
-- add_manual_rubric for purely taste items (a *great* coffee shop vs just having one nearby)
+SOFT / SUBJECTIVE GATES (score these — do not set mustHave unless the user says must / dealbreaker / hard no):
+- neighborhood_vibe prefs.prefer local_center = walkable local city-center (not sleepy, not a busy strip). mustHave false by default.
+- local_amenities prefs.requireCoffee / requireShops. mustHave false by default so missing OSM café data does not hide the whole list.
+- walkable: enabled, mustHave false.
+- flood vs flood_resilience: if they accept FEMA AE/VE, set flood prefs.acceptSfha true and mustHave false. Enable flood_resilience as the must-have. If they want to avoid flood zones, keep flood mustHave true.
+- add_manual_rubric for taste items (a *great* coffee shop)
+- Never set school_area mustHave true. set_budget already enables location scoring. Named cities filter the live search; they are not a silent cut on the list.
 
 If they dump everything in one message, apply baseline first, then add-ons.
 
@@ -367,11 +368,11 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     const amenities = applyTool(working, "set_dimension", {
       id: "local_amenities",
       enabled: true,
-      mustHave: wantCoffee,
+      mustHave: Boolean(wantCoffee && (text.includes("must") || text.includes("need") || text.includes("deal"))),
       prefs: { requireCoffee: wantCoffee, requireShops: wantShops || !wantCoffee },
     });
     working = amenities.matrix;
-    if (wantCoffee) notes.push("Must have at least one café within a short walk.");
+    if (wantCoffee) notes.push("Café nearby is scored (not a hard cut unless you say must).");
     if (wantShops || !wantCoffee) notes.push("Everyday shops within a short walk.");
     const walk = applyTool(working, "set_dimension", { id: "walkable", enabled: true });
     working = walk.matrix;

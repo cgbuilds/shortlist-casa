@@ -339,7 +339,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       remaining: quota.remaining,
       userLimit: quota.userLimit,
       workarounds: [],
-      advice: `First live search uses 1 of ${quota.userLimit} (and 1 of ${quota.globalLimit} account calls). After that, changing coffee, vibe, or tighter beds/price re-grades the cache for free. ${counter}; ${quota.remaining} left. ${account}.`,
+      advice: `You have used ${quota.used} of ${quota.userLimit} live searches (${quota.remaining} left). Cache is empty, so the first pull is required to load homes — that would spend 1, leaving ${Math.max(0, quota.remaining - 1)}. Account ${account}. Coffee/vibe/tighter beds after that re-grade for free.`,
     };
   }
   const matches = filterListingsByQuery(cached.listings, query);

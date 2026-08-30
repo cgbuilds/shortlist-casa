@@ -5,6 +5,7 @@ import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaf
 import "leaflet/dist/leaflet.css";
 import type { GradeResult, PropertyListing } from "@/lib/types";
 import { outboundListingLinks } from "@/lib/outbound-links";
+import { gradeCaption } from "@/lib/grade";
 
 type Row = { listing: PropertyListing; grade: GradeResult };
 
@@ -18,9 +19,9 @@ function FitBounds({ points }: { points: [number, number][] }) {
 }
 
 function colorFor(grade: GradeResult) {
-  if (grade.mustHaveFailed) return "#9a8f80";
-  if ((grade.total ?? 0) >= 80) return "#2f5d50";
-  if ((grade.total ?? 0) >= 65) return "#3d6e8c";
+  if (grade.band === "miss" || grade.mustHaveFailed) return "#9a8f80";
+  if (grade.band === "superb" || grade.band === "excellent") return "#2f5d50";
+  if (grade.band === "good") return "#3d6e8c";
   return "#b4532a";
 }
 
@@ -70,7 +71,7 @@ export function ResultsMap({
               <div className="min-w-[160px] text-sm">
                 <p className="font-semibold">{row.listing.address}</p>
                 <p>
-                  {row.grade.mustHaveFailed ? "pass" : row.grade.total} · {row.listing.beds} bd ·{" "}
+                  {gradeCaption(row.grade).score} {gradeCaption(row.grade).word} · {row.listing.beds} bd ·{" "}
                   {row.listing.listPrice ? `$${row.listing.listPrice.toLocaleString()}` : ""}
                 </p>
                 <p className="mt-1 flex gap-2">

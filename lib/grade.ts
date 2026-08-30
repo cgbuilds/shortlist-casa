@@ -539,13 +539,18 @@ function evaluateDimension(
   }
 }
 
-function bandFor(total: number | null, mustHaveFailed: boolean): GradeResult["band"] {
-  if (mustHaveFailed) return "pass";
+export function bandFor(total: number | null, mustHaveFailed: boolean): GradeResult["band"] {
+  if (mustHaveFailed) return "miss";
   if (total == null) return "incomplete";
-  if (total >= 80) return "strong";
-  if (total >= 65) return "fit";
-  if (total >= 50) return "stretch";
+  if (total >= 90) return "superb";
+  if (total >= 80) return "excellent";
+  if (total >= 65) return "good";
   return "pass";
+}
+
+export function gradeCaption(grade: Pick<GradeResult, "total" | "band" | "mustHaveFailed">) {
+  const score = grade.total == null ? "—" : String(grade.total);
+  return { score, word: grade.band };
 }
 
 export function grade(listing: PropertyListing, matrix: UserMatrix): GradeResult {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { GradeResult, PropertyListing } from "@/lib/types";
 import { outboundListingLinks } from "@/lib/outbound-links";
+import { gradeCaption } from "@/lib/grade";
 
 export function PropertyCard({
   listing,
@@ -42,10 +43,11 @@ export function PropertyCard({
 }
 
 export function ScorePill({ grade }: { grade: GradeResult }) {
-  const label = grade.mustHaveFailed ? "pass" : grade.total == null ? "—" : String(grade.total);
+  const { score, word } = gradeCaption(grade);
   return (
-    <div className="rounded-full bg-[var(--ink)] px-3 py-1 text-sm text-[var(--paper)]">
-      {label} <span className="text-[var(--paper)]/70">{grade.band}</span>
+    <div className="rounded-full bg-[var(--ink)] px-3 py-1 text-right text-sm text-[var(--paper)]">
+      <span className="font-semibold">{score}</span>
+      <span className="ml-1.5 text-[var(--paper)]/80">{word}</span>
     </div>
   );
 }

@@ -81,7 +81,7 @@ export function setBudget(
     next.searchArea = next.locationAllowlist.join(", ");
   }
   if (next.searchArea || next.locationAllowlist.length) {
-    const loc = setDimension(next, "school_area", { enabled: true, mustHave: true });
+    const loc = setDimension(next, "school_area", { enabled: true, mustHave: false });
     if (!("error" in loc)) return loc;
   }
   return next;

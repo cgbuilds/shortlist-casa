@@ -111,7 +111,7 @@ export type DimensionScore = {
 
 export type GradeResult = {
   total: number | null;
-  band: "strong" | "fit" | "stretch" | "pass" | "incomplete";
+  band: "superb" | "excellent" | "good" | "pass" | "miss" | "incomplete";
   mustHaveFailed: boolean;
   perDimension: DimensionScore[];
   estimatedPitia: number | null;

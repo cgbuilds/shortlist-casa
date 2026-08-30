@@ -34,7 +34,16 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [cacheCount, setCacheCount] = useState(0);
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
+  const [chatH, setChatH] = useState(320);
   const skipMatrixGrade = useRef(true);
+  const chatDrag = useRef<{ y: number; h: number } | null>(null);
+  const chatHRef = useRef(chatH);
+  chatHRef.current = chatH;
+
+  useEffect(() => {
+    const stored = Number(window.sessionStorage.getItem("homestead-chat-h"));
+    if (Number.isFinite(stored) && stored >= 160) setChatH(stored);
+  }, []);
 
   const applySaved = (saved?: { filename: string; count: number } | null) => {
     if (!saved) return;
@@ -126,17 +135,42 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <aside className="flex h-[42vh] min-h-0 w-full shrink-0 flex-col border-[var(--line)] lg:h-auto lg:w-[22rem] lg:border-r xl:w-[26rem]">
-        <ChatPanel
-          matrix={matrix}
-          remaining={remaining}
-          userLimit={userLimit}
-          onMatrix={(m, _commit, extra) => {
-            setMatrix(m);
-            if (extra?.livePull) void runLive(m, true);
-            else if (extra?.liveSearch) void runLive(m, false);
+      <aside className="flex h-[70vh] min-h-0 w-full shrink-0 flex-col border-[var(--line)] lg:h-full lg:w-[22rem] lg:border-r xl:w-[26rem]">
+        <div style={{ height: chatH }} className="flex min-h-0 shrink-0 flex-col">
+          <ChatPanel
+            matrix={matrix}
+            remaining={remaining}
+            userLimit={userLimit}
+            onMatrix={(m, _commit, extra) => {
+              setMatrix(m);
+              if (extra?.livePull) void runLive(m, true);
+              else if (extra?.liveSearch) void runLive(m, false);
+            }}
+          />
+        </div>
+        <div
+          role="separator"
+          aria-label="Drag to expand chat"
+          title="Drag to expand chat"
+          className="flex h-3 shrink-0 cursor-ns-resize items-center justify-center border-y border-[var(--line)] bg-[var(--paper-2)] hover:bg-[var(--line)]"
+          onPointerDown={(e) => {
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            chatDrag.current = { y: e.clientY, h: chatH };
           }}
-        />
+          onPointerMove={(e) => {
+            if (!chatDrag.current) return;
+            const max = Math.round(window.innerHeight * 0.75);
+            const next = Math.min(max, Math.max(160, chatDrag.current.h + (e.clientY - chatDrag.current.y)));
+            setChatH(next);
+          }}
+          onPointerUp={() => {
+            chatDrag.current = null;
+            window.sessionStorage.setItem("homestead-chat-h", String(chatHRef.current));
+          }}
+        >
+          <span className="block h-0.5 w-10 rounded-full bg-[var(--muted)]" />
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <RedfinUpload
           compact
           heading="Listings"
@@ -163,6 +197,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             <MatrixPreview matrix={matrix} />
           </div>
         </details>
+        </div>
       </aside>
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">

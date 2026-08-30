@@ -4,7 +4,7 @@ import { join } from "path";
 import { defaultMatrix } from "../kb/catalog";
 import { SEED_LISTINGS } from "../data/listings";
 import { runMatrixChat } from "../lib/chat";
-import { grade } from "../lib/grade";
+import { bandFor, grade, gradeCaption } from "../lib/grade";
 import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
 import { parseRedfinCsv } from "../lib/redfin-csv";
@@ -104,7 +104,8 @@ async function main() {
   const stPeteGrade = grade(stPeteHome, pinellasMx).perDimension.find((d) => d.id === "school_area");
   assert(!stPeteGrade?.mustHaveFailed, "Saint Petersburg matches St. Pete allowlist");
   const tampaOnly = grade({ ...sample, city: "Tampa", state: "FL" }, pinellasMx).perDimension.find((d) => d.id === "school_area");
-  assert(tampaOnly?.mustHaveFailed, "Tampa city fails St Pete/Clearwater allowlist");
+  assert(tampaOnly?.score === 20, "Tampa city scores low against St Pete/Clearwater allowlist");
+  assert(!tampaOnly?.mustHaveFailed, "location scoring is not a silent must-have cut");
 
   process.env.RENTCAST_USER_MONTHLY_LIMIT = "3";
   assert(quotaLimits().userLimit === 3, "beta default is 3 live searches");
@@ -198,6 +199,14 @@ async function main() {
   );
   assert(ponded.mustHaveFailed, "sewage/ponding fails drainage must");
 
+  assert(bandFor(94, false) === "superb", "90+ is superb");
+  assert(bandFor(82, false) === "excellent", "80s are excellent");
+  assert(bandFor(70, false) === "good", "mid 60-79 is good");
+  assert(bandFor(51, false) === "pass", "meets must-haves is pass");
+  assert(bandFor(88, true) === "miss", "must-have fail is miss");
+  assert(gradeCaption({ total: 82, band: "excellent", mustHaveFailed: false }).word === "excellent", "caption word");
+  assert(gradeCaption({ total: 82, band: "excellent", mustHaveFailed: false }).score === "82", "caption shows score");
+
   const soft = await runMatrixChat(
     matrix,
     [],
@@ -205,6 +214,7 @@ async function main() {
   );
   assert(soft.matrix.dimensions.neighborhood_vibe.enabled, "vibe on");
   assert(soft.matrix.dimensions.local_amenities.prefs?.requireCoffee, "coffee required");
+  assert(!soft.matrix.dimensions.local_amenities.mustHave, "coffee is scored unless they say must");
   assert(soft.matrix.dimensions.flood.prefs?.acceptSfha, "FEMA AE accepted");
   assert(soft.matrix.dimensions.flood_resilience.mustHave, "drainage must");
 
