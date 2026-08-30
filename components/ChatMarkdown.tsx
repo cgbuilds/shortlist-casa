@@ -40,14 +40,14 @@ const CHAT_BUSY = [
   "Walking the block in my head…",
   "Counting porches, not FLOPs…",
   "Sniffing out a café within a short walk…",
-  "Herding the dimension knobs…",
+  "Herding the must-haves…",
   "Chewing on that constraint…",
   "Combing the drainage, not the model card…",
   "Lining up beds, baths, and budget…",
   "Pondering whether we even need another search…",
   "Polishing the grade curve…",
   "Asking the catalog, not the void…",
-  "Grazing through the matrix…",
+  "Chewing on the must-haves…",
   "Considering a slightly tighter price cap…",
 ];
 

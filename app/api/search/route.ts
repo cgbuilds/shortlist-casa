@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     const saved = getCsvMeta(user);
     return NextResponse.json({
       source: "upload",
-      notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — Search & grade uses it until you upload a new CSV.`,
+      notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — Re-grade uses it until you upload a new CSV.`,
       results: ranked,
       saved,
       quota: getLiveQuota(user.id),
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
     if (!listings.length) {
       const baseline = baselineStatus(matrix);
       const why = !baseline.complete
-        ? `Nothing to re-grade, and the matrix is incomplete (${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}).`
+        ? `Nothing to re-grade, and your must-haves are incomplete (${baseline.gaps.filter((g) => !g.done).map((g) => g.label).join(", ")}).`
         : "Nothing to re-grade: no live cache and no saved CSV. Upload a Redfin CSV or confirm a live pull first.";
       return NextResponse.json(
         {
@@ -260,7 +260,7 @@ export async function POST(request: Request) {
     const from = liveList?.length ? "live cache" : `saved file ${saved?.filename ?? "CSV"}`;
     const notice =
       incomplete === ranked.length && ranked.length
-        ? `Re-graded ${ranked.length} homes from ${from}, but every score is incomplete — the matrix has no scoring knobs on, or listings lack year/type/price.`
+        ? `Re-graded ${ranked.length} homes from ${from}, but every score is incomplete — your must-haves are not set, or listings lack year/type/price.`
         : `Re-graded ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.`;
     return NextResponse.json({
       source: liveList?.length ? "cache" : "saved",

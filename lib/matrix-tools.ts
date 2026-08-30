@@ -189,7 +189,7 @@ export const CHAT_TOOLS = [
     type: "function" as const,
     function: {
       name: "preview_matrix",
-      description: "Show the current matrix draft.",
+      description: "Show the current must-haves / home profile draft.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -197,7 +197,7 @@ export const CHAT_TOOLS = [
     type: "function" as const,
     function: {
       name: "commit_matrix",
-      description: "Save the matrix as the user's active grading profile after they confirm.",
+      description: "Save the user's must-haves (home profile) after they confirm. In replies call this their must-haves, never a matrix.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },

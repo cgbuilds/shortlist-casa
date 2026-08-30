@@ -1,6 +1,6 @@
 # Homestead Matrix
 
-Chat-built home rating matrix for family. **v1 grades a Redfin Favorites CSV** (the Valrico-area export is bundled). Users paste free-text gates in chat; the bot can only toggle a knowledge-base catalog.
+Chat-built must-haves (home profile) for family. **v1 grades a Redfin Favorites CSV** (the Valrico-area export is bundled). Users paste free-text gates in chat; the bot can only toggle a knowledge-base catalog.
 
 ## Local run
 
@@ -12,7 +12,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) → **Continue in demo mode**.
 
-1. **Matrix** — paste Mom’s gates (townhouse, garage, ≤3 stories, 2+ bed/bath, in-unit laundry, walkable, not high flood, long term) → **commit**.
+1. **Must-haves** — paste gates in chat (townhouse, garage, ≤3 stories, 2+ bed/bath, in-unit laundry, walkable, not high flood, long term) → say you’re ready to save.
 2. **Search** — grades the bundled Redfin favorites; or upload a new Redfin CSV (Favorites → Download).
 
 Redfin does not include garage, laundry, end unit, flood, or walkability. Mark those on a property page and regrade. Listing links use the CSV’s real Redfin URL.

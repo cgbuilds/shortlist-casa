@@ -220,7 +220,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           open={showLevers}
           onToggle={(e) => setShowLevers((e.target as HTMLDetailsElement).open)}
         >
-          <summary className="cursor-pointer px-3 py-2 text-[var(--muted)]">Scoring details</summary>
+          <summary className="cursor-pointer px-3 py-2 text-[var(--muted)]">Your must-haves</summary>
           <div className="max-h-80 overflow-y-auto px-3 pb-3">
             <MatrixPreview matrix={matrix} />
           </div>
@@ -232,7 +232,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
           <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
             {rows.length ? `${rows.length} homes` : "No homes yet"}
-            {matrix.searchArea ? ` · matrix: ${matrix.searchArea}` : " · matrix not saved yet"}
+            {matrix.searchArea ? ` · Must-haves: ${matrix.searchArea}` : " · No must-haves saved yet"}
             {notice ? ` · ${notice}` : ""}
           </p>
           <div className="flex flex-wrap items-center gap-2">

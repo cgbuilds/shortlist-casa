@@ -14,7 +14,7 @@ const sans = Source_Sans_3({
 
 export const metadata: Metadata = {
   title: "Homestead Matrix",
-  description: "Chat-built home rating matrix with legal listing search.",
+  description: "Grade homes against must-haves you set in chat.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

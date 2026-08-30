@@ -154,7 +154,7 @@ export function RedfinUpload({
       {savedFilename && savedCount ? (
         <p className="mt-2 text-sm text-[var(--accent)]">
           Saved {savedFilename} — {savedCount} home{savedCount === 1 ? "" : "s"} on file. It persists after
-          refresh. Search & grade uses this list; live search will not replace it.
+          refresh. Re-grade uses this list; live search will not replace it.
         </p>
       ) : null}
       <p className="mt-2 text-xs text-[var(--muted)]">

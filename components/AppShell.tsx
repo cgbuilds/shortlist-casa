@@ -30,7 +30,7 @@ export function AppShell({
       <main className={full ? "flex min-h-0 flex-1 flex-col" : "mx-auto max-w-6xl px-4 py-8"}>{children}</main>
       {full ? null : (
         <footer className="mx-auto max-w-6xl px-4 pb-10 text-xs leading-relaxed text-[var(--muted)]">
-          Not MLS. Scores are estimates from your matrix and available facts, not an appraisal or financial
+          Not MLS. Scores are estimates from your must-haves and available facts, not an appraisal or financial
           advice. Listing photos and live inventory live on Zillow and Redfin — we only link out.
         </footer>
       )}

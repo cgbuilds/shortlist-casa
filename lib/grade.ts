@@ -594,7 +594,7 @@ export function grade(listing: PropertyListing, matrix: UserMatrix): GradeResult
   let incompleteReason: string | undefined;
   if (band === "incomplete") {
     if (!active.length) {
-      incompleteReason = "Your matrix is empty — beds, baths, type, and area are not on. Commit them in chat.";
+      incompleteReason = "Your must-haves are empty — tell chat the area, beds, baths, and home type, then say you’re ready.";
     } else if (!scored.length) {
       incompleteReason = "This listing is missing the facts those gates need (year, type, price, etc.).";
     } else {

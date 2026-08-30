@@ -5,8 +5,9 @@ import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { queryFromMatrix } from "@/lib/rentcast";
 import type { UserMatrix } from "@/lib/types";
 
-export const SYSTEM_PROMPT = `You are a home-buy rating-matrix coach. Users will grade a Redfin favorites CSV against a matrix you build with tools.
-You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
+export const SYSTEM_PROMPT = `You are a home-buying coach. Users grade listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
+Never say "matrix" to the user — say must-haves or home profile.
+
 You may add a manual rubric for qualitative extras.
 
 BASELINE FIRST — do not skip this, and do not commit until baseline is complete:
@@ -30,7 +31,7 @@ If they dump everything in one message, apply baseline first, then add-ons.
 Do not keep Valrico, Brandon, Bloomingdale, or River Hills unless the user said those places.
 Format replies as markdown with **bold** labels and dash lists.
 Keep replies short. After tools, recap what is set and what baseline is still missing.
-When baseline is complete AND the user confirms, call commit_matrix.
+When baseline is complete AND the user confirms, call commit_matrix. Tell them their must-haves are saved — never say matrix.
 
 LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-grades the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.`;
 
@@ -130,7 +131,7 @@ export async function runMatrixChat(
     { role: "system", content: SYSTEM_PROMPT },
     {
       role: "system",
-      content: `Current matrix preview: ${JSON.stringify(previewMatrix(matrix))}`,
+      content: `Current home profile (must-haves) preview: ${JSON.stringify(previewMatrix(matrix))}`,
     },
     ...(liveAdvice
       ? [
@@ -196,7 +197,7 @@ export async function runMatrixChat(
       };
     }
     return {
-      reply: "I updated your matrix draft.",
+      reply: "I updated your must-haves.",
       matrix: working,
       commit,
       livePull,
@@ -525,7 +526,7 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
       );
     } else {
       commit = true;
-      notes.push("Matrix committed as your active grader.");
+      notes.push("Must-haves saved as your home profile.");
     }
   }
 

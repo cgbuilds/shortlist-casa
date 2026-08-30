@@ -145,7 +145,7 @@ export function ChatPanel({
         {error && !pending ? <p className="text-xs text-[var(--muted)]">{error}</p> : null}
         {committed ? (
           <p className="text-xs text-[var(--accent)]">
-            Matrix saved. Upload a CSV below — homes will grade on this page.
+            Must-haves saved. Upload a CSV below — homes will grade on this page.
           </p>
         ) : null}
       </div>
