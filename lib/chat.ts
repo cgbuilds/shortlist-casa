@@ -43,6 +43,12 @@ LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 5
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
+const RECAP_PROMPT = `You are a home-buying coach. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
+Never say "matrix". Say must-haves or home profile.
+Reply in short markdown: **bold** labels and dash lists.
+Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
+Do not claim you searched MLS. Live search is a separate confirmed pull (3/user, 50 account cap).`;
+
 export type { ChatMessage } from "@/lib/types";
 
 type LlmClient = { client: OpenAI; model: string; provider: string };
@@ -52,9 +58,7 @@ function getLlmClient(): LlmClient | null {
   if (openrouter) {
     return {
       provider: "openrouter",
-      model: process.env.OPENROUTER_MODEL && process.env.OPENROUTER_MODEL !== "openrouter/auto"
-        ? process.env.OPENROUTER_MODEL
-        : "openai/gpt-4o-mini",
+      model: process.env.OPENROUTER_MODEL || "openrouter/auto",
       client: new OpenAI({
         apiKey: openrouter,
         baseURL: "https://openrouter.ai/api/v1",
@@ -103,6 +107,10 @@ export function chatProviderInfo() {
   };
 }
 
+function usesToolCalling(model: string) {
+  return !/auto/i.test(model);
+}
+
 export type ChatResult = {
   reply: string;
   matrix: UserMatrix;
@@ -139,17 +147,54 @@ export async function runMatrixChat(
     };
   }
   const liveAdvice = opts?.userId ? adviseLiveSearch(opts.userId, queryFromMatrix(matrix)) : null;
+  const applied = heuristicChat(matrix, userText, history, opts?.userId);
   const llm = getLlmClient();
   if (!llm) {
-    const fallback = heuristicChat(matrix, userText, history, opts?.userId);
     return {
-      ...fallback,
+      ...applied,
       provider: "heuristic",
       model: "built-in",
       label: "Built-in coach",
       toolRounds: 0,
       elapsedMs: Date.now() - started,
     };
+  }
+
+  if (!usesToolCalling(llm.model)) {
+    try {
+      const recap = await llm.client.chat.completions.create({
+        model: llm.model,
+        messages: [
+          { role: "system", content: RECAP_PROMPT },
+          {
+            role: "system",
+            content: `Live search quota: ${JSON.stringify(liveAdvice)}\nApplied (source of truth): ${applied.reply}\nProfile: ${JSON.stringify(previewMatrix(applied.matrix))}`,
+          },
+          ...history.slice(-6).map((m) => ({ role: m.role, content: m.content }) as const),
+          { role: "user", content: userText },
+        ],
+      });
+      const reply = recap.choices[0]?.message?.content?.trim();
+      return {
+        ...applied,
+        reply: reply || applied.reply,
+        usedModel: true,
+        provider: llm.provider,
+        model: llm.model,
+        label: info.label,
+        toolRounds: 0,
+        elapsedMs: Date.now() - started,
+      };
+    } catch {
+      return {
+        ...applied,
+        provider: "heuristic",
+        model: "built-in",
+        label: "Built-in coach",
+        toolRounds: 0,
+        elapsedMs: Date.now() - started,
+      };
+    }
   }
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -170,10 +215,10 @@ export async function runMatrixChat(
     { role: "user", content: userText },
   ];
 
-  let working = matrix;
-  let commit = false;
-  let livePull = false;
-  let liveSearch = false;
+  let working = applied.matrix;
+  let commit = applied.commit;
+  let livePull = Boolean(applied.livePull);
+  let liveSearch = Boolean(applied.liveSearch);
   let guard = 0;
   let toolRounds = 0;
   const before = JSON.stringify(previewMatrix(matrix));
@@ -241,15 +286,12 @@ export async function runMatrixChat(
       toolRounds,
       elapsedMs: Date.now() - started,
     };
-  } catch (err) {
-    const fallback = heuristicChat(matrix, userText, history, opts?.userId);
-    const detail = err instanceof Error ? err.message : "LLM error";
+  } catch {
     return {
-      ...fallback,
-      reply: `${fallback.reply}\n\n_(Provider ${info.label} failed: ${detail.slice(0, 140)}. Used built-in coach.)_`,
+      ...applied,
       provider: "heuristic",
       model: "built-in",
-      label: "Built-in coach (fallback)",
+      label: "Built-in coach",
       toolRounds,
       elapsedMs: Date.now() - started,
     };
