@@ -60,6 +60,14 @@ export function saveCsvListings(user: SessionUser, listings: PropertyListing[], 
   });
 }
 
+/** Keep regrade on the pulled set. Do not overwrite a user-uploaded Redfin CSV. */
+export function adoptLiveListings(user: SessionUser, listings: PropertyListing[]) {
+  if (!listings.length) return;
+  const name = getCsvMeta(user)?.filename ?? "";
+  if (name && name !== "starter-tampa.csv" && !name.startsWith("live-")) return;
+  saveCsvListings(user, listings, "live-search.json");
+}
+
 export function getCsvListings(user: SessionUser): PropertyListing[] {
   return hydrateCsv(user.id)?.listings ?? [];
 }

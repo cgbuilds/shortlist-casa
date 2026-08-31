@@ -39,6 +39,7 @@ function confirmScoring(kind: "live" | "cache" | "score", data?: SearchResponse)
 export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [matrix, setMatrix] = useState(initialMatrix ?? defaultMatrix());
   const [rows, setRows] = useState<Row[]>([]);
+  const [mapSetKey, setMapSetKey] = useState("empty");
   const [totalMatched, setTotalMatched] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [liveSearch, setLiveSearch] = useState(false);
@@ -61,6 +62,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [actionNotice, setActionNotice] = useState<{ id: number; text: string } | null>(null);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
+  const scoreGen = useRef(0);
+  const leftStarter = useRef(false);
 
   useEffect(() => {
     if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
@@ -104,16 +107,27 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     totalMatched?: number;
     notice?: string;
     error?: string;
+    source?: string;
     quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
     cache?: { count: number };
     saved?: { filename: string; count: number } | null;
-  }) => {
+  }, gen = scoreGen.current, opts?: { partial?: boolean; allowStarter?: boolean }) => {
+    if (gen !== scoreGen.current) return;
+    const src = data.source ?? "";
+    if (leftStarter.current && !opts?.allowStarter && (src === "redfin-favorites" || src === "favorites")) {
+      return;
+    }
     if (Array.isArray(data.results)) {
+      if (opts?.partial && data.results.length === 0) return;
       if (data.results.length || !data.error) {
         const top = takeTopListings(data.results);
         setRows(top);
         setTotalMatched(data.totalMatched ?? data.results.length);
         if (top[0]) setSelectedId(top[0].listing.id);
+        if (!opts?.partial) setMapSetKey(top.map((r) => r.listing.id).join("|") || "empty");
+        if (src === "rentcast" || src === "cache" || src === "upload" || src === "saved" || src === "live") {
+          leftStarter.current = true;
+        }
       }
     }
     if (data.quota) {
@@ -127,22 +141,27 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     applySaved(data.saved);
   }, []);
 
-  const onScoreProgress = useCallback(
-    (p: RankProgress) => {
-      setScoreProgress(p);
-      applyGrade({ results: p.results, totalMatched: p.totalMatched });
-    },
-    [applyGrade]
-  );
-
-  async function runScoring(body: Record<string, unknown>) {
+  function beginScore() {
     scoreAbort.current?.abort();
     const ac = new AbortController();
     scoreAbort.current = ac;
+    const gen = ++scoreGen.current;
+    return { ac, gen };
+  }
+
+  async function runScoring(body: Record<string, unknown>) {
+    const { ac, gen } = beginScore();
     setScoreProgress({ analyzed: 0, total: totalMatched || 0, processing: 0 });
     try {
-      const { ok, status, data } = await postSearch(body, { onProgress: onScoreProgress, signal: ac.signal });
-      applyGrade(data);
+      const { ok, status, data } = await postSearch(body, {
+        onProgress: (p) => {
+          if (gen !== scoreGen.current) return;
+          setScoreProgress(p);
+          applyGrade({ results: p.results, totalMatched: p.totalMatched }, gen, { partial: true });
+        },
+        signal: ac.signal,
+      });
+      applyGrade(data, gen);
       if (!ok) throw new Error(data.error ?? `Scoring failed (${status})`);
       return data;
     } catch (err) {
@@ -216,6 +235,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     void (async () => {
       try {
         const data = await refreshGrades();
+        if (data === undefined) return;
         if (data?.results?.length) return;
       } catch {
         /* no saved list yet */
@@ -281,6 +301,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         <div className="relative min-h-0 min-w-0 flex-1 basis-0 overflow-hidden">
           <ResultsMap
+            key={mapSetKey}
             rows={rows}
             selectedId={selectedId}
             onSelect={setSelectedId}
@@ -335,9 +356,12 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             cacheCount={cacheCount}
             savedFilename={savedFilename}
             savedCount={savedCount}
+            onSearchStart={() => beginScore()}
             onGraded={(data) => {
               setScoreProgress(null);
-              applyGrade(data as Parameters<typeof applyGrade>[0]);
+              applyGrade(data as Parameters<typeof applyGrade>[0], scoreGen.current, {
+                allowStarter: data.source === "redfin-favorites",
+              });
               noticeId.current += 1;
               const kind = data.pulled || data.source === "rentcast" ? "live" : "score";
               setActionNotice({
@@ -348,7 +372,12 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
               });
               setChatOpen(true);
             }}
-            onScoreProgress={onScoreProgress}
+            onScoreProgress={(p) => {
+              setScoreProgress(p);
+              applyGrade({ results: p.results as Row[], totalMatched: p.totalMatched }, scoreGen.current, {
+                partial: true,
+              });
+            }}
           />
           <div className="border-t border-[var(--line)] px-3 pb-3">
             <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">

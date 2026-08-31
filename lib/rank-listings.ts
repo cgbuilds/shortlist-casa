@@ -36,7 +36,6 @@ export async function rankListings(
   emit(Math.min(BATCH, total));
   for (let i = 0; i < listings.length; i += BATCH) {
     const batch = listings.slice(i, i + BATCH);
-    emit(batch.length);
     const part = await Promise.all(
       batch.map(async (listing) => {
         const [ready] = await enrichListingsForMatrix([listing], matrix);
@@ -45,6 +44,7 @@ export async function rankListings(
       })
     );
     done.push(...part);
+    emit(Math.min(BATCH, Math.max(0, total - done.length)));
   }
   const ranked = sortRows(done);
   onProgress?.({

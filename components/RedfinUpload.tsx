@@ -42,6 +42,7 @@ export function RedfinUpload({
   savedCount,
   onGraded,
   onScoreProgress,
+  onSearchStart,
 }: {
   heading?: string;
   compact?: boolean;
@@ -58,6 +59,7 @@ export function RedfinUpload({
   savedCount?: number;
   onGraded?: (data: GradePayload) => void;
   onScoreProgress?: (p: RankProgress) => void;
+  onSearchStart?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("");
@@ -66,6 +68,7 @@ export function RedfinUpload({
   async function grade(body: Record<string, unknown>, kind: "refresh" | "csv" | "sample") {
     setPending(kind);
     setStatus("");
+    onSearchStart?.();
     try {
       const { ok, data } = await postSearch(body, { onProgress: onScoreProgress });
       if (!ok) {

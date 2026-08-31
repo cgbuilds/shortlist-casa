@@ -23,7 +23,7 @@ import {
 } from "@/lib/listing-cache";
 import { rankListings, type RankRow } from "@/lib/rank-listings";
 import { ensureMatrix } from "@/lib/matrix-tools";
-import { getSessionUser, getUserListings, getCsvMeta, loadActiveMatrix, saveCsvListings, saveGrade, saveSearch } from "@/lib/session";
+import { getSessionUser, getUserListings, getCsvMeta, loadActiveMatrix, saveCsvListings, adoptLiveListings, saveGrade, saveSearch } from "@/lib/session";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
 function ndjsonStream(run: (emit: (obj: unknown) => void) => Promise<void>) {
@@ -229,6 +229,7 @@ export async function POST(request: Request) {
         pulled = true;
         fromCache = false;
       }
+      adoptLiveListings(user, listings);
       const filtered = filterListingsByQuery(listings, query);
       listings.forEach(rememberListing);
       return respondRanked(body.stream, filtered, matrix, async (ranked) => {
