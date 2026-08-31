@@ -11,7 +11,7 @@ const DEFAULT_MESSAGES: ChatMessage[] = [
   {
     role: "assistant",
     content:
-      "You’re looking at a starter Tampa list (3 bed, 2 bath, single-family). Tell me what to change — area, beds, budget, walkable, flood — and I’ll update the list and scores.",
+      "You’re looking at a sample Tampa list (3 bed, 2 bath, single-family). Tell me your must-haves — area, beds, budget, type. If those sample homes don’t fit, they come off the map and you’ll upload a Redfin Favorites CSV or run a live search.",
   },
 ];
 

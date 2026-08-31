@@ -8,6 +8,8 @@ export type HomesteadSession = {
   listings: PropertyListing[];
   matrix?: UserMatrix;
   savedAt: number;
+  awaitingSearch?: boolean;
+  hasOwnList?: boolean;
 };
 
 export function sanitizeListings(raw: unknown): PropertyListing[] {
@@ -40,11 +42,19 @@ export function parseStoredSession(raw: string | null): HomesteadSession {
       return { listings: sanitizeListings(parsed), savedAt: 0 };
     }
     if (parsed && typeof parsed === "object") {
-      const row = parsed as { listings?: unknown; matrix?: unknown; savedAt?: unknown };
+      const row = parsed as {
+        listings?: unknown;
+        matrix?: unknown;
+        savedAt?: unknown;
+        awaitingSearch?: unknown;
+        hasOwnList?: unknown;
+      };
       return {
         listings: sanitizeListings(row.listings),
         matrix: looksLikeMatrix(row.matrix) ? row.matrix : undefined,
         savedAt: typeof row.savedAt === "number" ? row.savedAt : 0,
+        awaitingSearch: row.awaitingSearch === true,
+        hasOwnList: row.hasOwnList === true,
       };
     }
   } catch {
@@ -85,18 +95,33 @@ export function readStoredPool(): PropertyListing[] {
   return readStoredSession().listings;
 }
 
-export function writeStoredSession(patch: { listings?: PropertyListing[]; matrix?: UserMatrix }) {
+export function writeStoredSession(patch: {
+  listings?: PropertyListing[];
+  matrix?: UserMatrix;
+  awaitingSearch?: boolean;
+  hasOwnList?: boolean;
+}) {
   if (typeof window === "undefined") return;
   const prev = readStoredSession();
   const listings = patch.listings ? sanitizeListings(patch.listings) : prev.listings;
   const matrix = patch.matrix ?? prev.matrix;
+  const awaitingSearch = patch.awaitingSearch ?? prev.awaitingSearch;
+  const hasOwnList = patch.hasOwnList ?? prev.hasOwnList;
   if (!listings.length && !matrix) return;
-  const payload = JSON.stringify({ listings, matrix, savedAt: Date.now() } satisfies HomesteadSession);
+  const payload = JSON.stringify({
+    listings,
+    matrix,
+    savedAt: Date.now(),
+    awaitingSearch,
+    hasOwnList,
+  } satisfies HomesteadSession);
   if (!writeStore(window.localStorage, SESSION_KEY, payload)) {
     const slim = JSON.stringify({
       listings: listings.slice(0, 25),
       matrix,
       savedAt: Date.now(),
+      awaitingSearch,
+      hasOwnList,
     } satisfies HomesteadSession);
     writeStore(window.localStorage, SESSION_KEY, slim);
   }

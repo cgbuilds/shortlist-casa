@@ -13,7 +13,7 @@ import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
 import { postSearch, type SearchResponse } from "@/lib/search-client";
 import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
-import { readStoredPool, readStoredSession, writeStoredPool, writeStoredMatrix } from "@/lib/listings-payload";
+import { readStoredPool, readStoredSession, writeStoredPool, writeStoredMatrix, writeStoredSession } from "@/lib/listings-payload";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -22,6 +22,14 @@ const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m
 
 type Row = { listing: PropertyListing; grade: GradeResult };
 const BANNER_KEY = "homestead-starter-banner-dismissed";
+
+function isOwnListSource(source: string, filename?: string) {
+  if (source === "rentcast" || source === "live" || source === "upload" || source === "cache") return true;
+  if (source === "saved" && filename && filename !== "starter-tampa.csv" && !filename.startsWith("starter-")) {
+    return true;
+  }
+  return false;
+}
 
 function confirmScoring(kind: "live" | "cache" | "score", data?: SearchResponse) {
   if (!data) return "Could not finish that action.";
@@ -62,10 +70,14 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [job, setJob] = useState<{ tone: "err"; text: string } | null>(null);
   const [actionNotice, setActionNotice] = useState<{ id: number; text: string } | null>(null);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [needListHint, setNeedListHint] = useState(false);
+  const [hasOwnList, setHasOwnList] = useState(false);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
   const leftStarter = useRef(false);
+  const starterOnly = useRef(true);
+  const criteriaSent = useRef(false);
   const poolRef = useRef<PropertyListing[]>([]);
   const matrixRef = useRef(matrix);
   matrixRef.current = matrix;
@@ -124,6 +136,12 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (leftStarter.current && !opts?.allowStarter && (src === "redfin-favorites" || src === "favorites")) {
       return;
     }
+    if (isOwnListSource(src, data.saved?.filename)) {
+      starterOnly.current = false;
+      setHasOwnList(true);
+      setNeedListHint(false);
+      writeStoredSession({ hasOwnList: true, awaitingSearch: false });
+    }
     if (Array.isArray(data.listings) && data.listings.length && !opts?.partial) {
       poolRef.current = data.listings;
       writeStoredPool(data.listings);
@@ -132,15 +150,25 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (Array.isArray(data.results)) {
       if (opts?.partial && data.results.length === 0) return;
       if (data.results.length || !data.error) {
-        const top = takeTopListings(data.results);
+        let top = takeTopListings(data.results);
+        if (starterOnly.current && criteriaSent.current) {
+          top = top.filter((row) => !row.grade.mustHaveFailed);
+          setNeedListHint(true);
+          writeStoredSession({ awaitingSearch: true, hasOwnList: false, listings: top.map((r) => r.listing) });
+        }
         setRows(top);
-        setTotalMatched(data.totalMatched ?? data.results.length);
+        setTotalMatched(starterOnly.current && criteriaSent.current ? top.length : (data.totalMatched ?? data.results.length));
         if (top[0]) setSelectedId(top[0].listing.id);
+        else setSelectedId(null);
         if (!opts?.partial) setMapSetKey(top.map((r) => r.listing.id).join("|") || "empty");
         if (!opts?.partial && !data.listings?.length && top.length) {
           poolRef.current = top.map((r) => r.listing);
           writeStoredPool(poolRef.current);
           writeStoredMatrix(matrixRef.current);
+        }
+        if (starterOnly.current && criteriaSent.current && !top.length) {
+          poolRef.current = [];
+          writeStoredPool([]);
         }
         if (src === "rentcast" || src === "cache" || src === "upload" || src === "saved" || src === "live") {
           leftStarter.current = true;
@@ -219,9 +247,29 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }) {
     const draft = event.matrix ?? matrixRef.current;
     if (event.matrix) persistMatrix(event.matrix);
-    if (event.livePull) return confirmScoring("live", await runLive(draft, true));
-    if (event.liveSearch) return confirmScoring("cache", await runLive(draft, false));
-    if (event.rescore || event.matrix) return confirmScoring("score", await refreshGrades(draft));
+    if (event.matrix || event.rescore) {
+      criteriaSent.current = true;
+      if (starterOnly.current) setNeedListHint(true);
+    }
+    if (event.livePull) {
+      starterOnly.current = false;
+      return confirmScoring("live", await runLive(draft, true));
+    }
+    if (event.liveSearch) {
+      starterOnly.current = false;
+      return confirmScoring("cache", await runLive(draft, false));
+    }
+    if (event.rescore || event.matrix) {
+      const data = await refreshGrades(draft);
+      if (starterOnly.current) {
+        const shown = (data?.results ?? []).filter((r) => !r.grade.mustHaveFailed);
+        if (!shown.length) {
+          return "None of the sample homes fit those must-haves. Upload a Redfin Favorites CSV (Actions) or confirm a live search to load a matching list.";
+        }
+        return `Kept ${shown.length} sample home${shown.length === 1 ? "" : "s"} that still fit. Upload a Redfin Favorites CSV or run a live search for a real matching list.`;
+      }
+      return confirmScoring("score", data);
+    }
   }
 
   useEffect(() => {
@@ -256,6 +304,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       poolRef.current = stored.listings;
       leftStarter.current = true;
     }
+    if (stored.hasOwnList) {
+      starterOnly.current = false;
+      setHasOwnList(true);
+    }
+    if (stored.awaitingSearch && !stored.hasOwnList) {
+      criteriaSent.current = true;
+      starterOnly.current = true;
+      setNeedListHint(true);
+    }
     const draft = stored.matrix?.searchArea?.trim() ? stored.matrix : matrix;
     if (stored.matrix?.searchArea?.trim()) {
       matrixRef.current = stored.matrix;
@@ -263,6 +320,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     }
 
     void (async () => {
+      if (stored.awaitingSearch && !stored.hasOwnList && !stored.listings.length) {
+        return;
+      }
       try {
         const data = await runScoring({
           source: "regrade",
@@ -291,7 +351,26 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {showBanner ? (
+      {needListHint && !hasOwnList ? (
+        <div className="shrink-0 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-3">
+          <p className="text-sm text-[var(--ink)]">
+            {rows.length
+              ? "Only sample homes that still fit your must-haves are shown. This is not a live search yet."
+              : "None of the sample homes fit those must-haves."}{" "}
+            Upload a Redfin Favorites CSV or run a live search to load a matching list.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm text-white"
+              onClick={() => setChatOpen(true)}
+            >
+              Open chat to search or upload
+            </button>
+          </div>
+          {progressLine ? <p className="mt-2 text-xs text-[var(--muted)]">{progressLine}</p> : null}
+        </div>
+      ) : showBanner ? (
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm">
           <p className="min-w-0 text-[var(--ink)]">
             Starter homes are on the map.{" "}
@@ -358,7 +437,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           ))}
           {rows.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">
-              Loading starter homes… If nothing appears, open chat and ask for a Tampa list.
+              {needListHint
+                ? "No matching homes on the sample list. Open chat → Actions to upload a Redfin Favorites CSV or use a live search."
+                : "Loading sample homes… If nothing appears, open chat and set your must-haves."}
             </p>
           ) : null}
         </div>

@@ -335,6 +335,8 @@ async function main() {
   assert(sanitizeListings([{ address: "no id" }, null, "x"]).length === 0, "drops invalid listings");
   const parsedPool = parseStoredSession(JSON.stringify({ listings: [{ id: "h1", address: "9 Oak" }], savedAt: 1 }));
   assert(parsedPool.listings[0]?.id === "h1", "session JSON restores listings");
+  const awaiting = parseStoredSession(JSON.stringify({ listings: [], matrix: starterMatrix(), awaitingSearch: true, savedAt: 2 }));
+  assert(awaiting.awaitingSearch === true, "awaitingSearch flag restores");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,
