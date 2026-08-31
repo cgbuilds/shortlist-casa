@@ -5,8 +5,10 @@ import type { ChatMessage, UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
 import { wantsRescore, looksLikeCriteria } from "@/lib/chat-intent";
 
-export const CHAT_STORAGE_KEY = "homestead-chat-messages";
-export const CHAT_DISMISSED_KEY = "homestead-chat-dismissed";
+export const CHAT_STORAGE_KEY = "shortlist-chat-messages";
+export const CHAT_DISMISSED_KEY = "shortlist-chat-dismissed";
+export const LEGACY_CHAT_DISMISSED_KEY = "homestead-chat-dismissed";
+const LEGACY_CHAT_STORAGE_KEY = "homestead-chat-messages";
 
 const DEFAULT_MESSAGES: ChatMessage[] = [
   {
@@ -38,12 +40,14 @@ function chatFailMessage(err: unknown, status?: number) {
 
 function emitChatLog(event: string, detail: Record<string, unknown>) {
   const payload = { t: new Date().toISOString(), event, ...detail };
-  console.info("[homestead-chat]", payload);
+  console.info("[shortlist-chat]", payload);
 }
 
 function readStoredMessages(): ChatMessage[] | null {
   try {
-    const raw = window.sessionStorage.getItem(CHAT_STORAGE_KEY);
+    const raw =
+      window.sessionStorage.getItem(CHAT_STORAGE_KEY) ??
+      window.sessionStorage.getItem(LEGACY_CHAT_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ChatMessage[];
     if (Array.isArray(parsed) && parsed.length) return parsed;

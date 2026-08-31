@@ -45,7 +45,7 @@ out tags;`;
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          "User-Agent": "HomesteadMatrix/1.0 (family home grader)",
+          "User-Agent": "Shortlist/1.0 (https://shortlist.casa)",
         },
         body: `data=${encodeURIComponent(query)}`,
         cache: "no-store",

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Source_Sans_3 } from "next/font/google";
+import { BRAND_BLURB, BRAND_NAME, BRAND_TAGLINE, BRAND_URL } from "@/lib/brand";
 import "./globals.css";
 
 const display = Fraunces({
@@ -13,8 +14,17 @@ const sans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "Homestead Matrix",
-  description: "Score homes against must-haves you set in chat.",
+  metadataBase: new URL(BRAND_URL),
+  title: BRAND_NAME,
+  description: BRAND_TAGLINE,
+  applicationName: BRAND_NAME,
+  openGraph: {
+    title: BRAND_NAME,
+    description: BRAND_BLURB,
+    url: BRAND_URL,
+    siteName: BRAND_NAME,
+    type: "website",
+  },
 };
 
 export const viewport = {

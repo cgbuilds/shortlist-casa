@@ -1,10 +1,12 @@
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
 const MAX_RECALL = 80;
-export const LISTING_POOL_KEY = "homestead-listing-pool";
-export const SESSION_KEY = "homestead-session-v1";
+export const LISTING_POOL_KEY = "shortlist-listing-pool";
+export const SESSION_KEY = "shortlist-session-v1";
+const LEGACY_POOL_KEY = "homestead-listing-pool";
+const LEGACY_SESSION_KEY = "homestead-session-v1";
 
-export type HomesteadSession = {
+export type StoredSession = {
   listings: PropertyListing[];
   matrix?: UserMatrix;
   savedAt: number;
@@ -43,7 +45,7 @@ function looksLikeMatrix(raw: unknown): raw is UserMatrix {
   return typeof m.searchArea === "string" && typeof m.catalogVersion === "string" && Boolean(m.dimensions);
 }
 
-export function parseStoredSession(raw: string | null): HomesteadSession {
+export function parseStoredSession(raw: string | null): StoredSession {
   if (!raw) return { listings: [], savedAt: 0 };
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -91,12 +93,16 @@ function writeStore(store: Storage | undefined, key: string, value: string) {
   }
 }
 
-export function readStoredSession(): HomesteadSession {
+export function readStoredSession(): StoredSession {
   if (typeof window === "undefined") return { listings: [], savedAt: 0 };
-  const fromSession = parseStoredSession(readStore(window.localStorage, SESSION_KEY));
-  if (fromSession.listings.length || fromSession.matrix) return fromSession;
-  const fromLocalLegacy = parseStoredSession(readStore(window.localStorage, LISTING_POOL_KEY));
-  if (fromLocalLegacy.listings.length) return fromLocalLegacy;
+  for (const key of [SESSION_KEY, LEGACY_SESSION_KEY]) {
+    const fromSession = parseStoredSession(readStore(window.localStorage, key));
+    if (fromSession.listings.length || fromSession.matrix) return fromSession;
+  }
+  for (const key of [LISTING_POOL_KEY, LEGACY_POOL_KEY]) {
+    const fromLocal = parseStoredSession(readStore(window.localStorage, key));
+    if (fromLocal.listings.length) return fromLocal;
+  }
   return parseStoredSession(readStore(window.sessionStorage, LISTING_POOL_KEY));
 }
 
@@ -123,7 +129,7 @@ export function writeStoredSession(patch: {
     savedAt: Date.now(),
     awaitingSearch,
     hasOwnList,
-  } satisfies HomesteadSession);
+  } satisfies StoredSession);
   if (!writeStore(window.localStorage, SESSION_KEY, payload)) {
     const slim = JSON.stringify({
       listings: listings.slice(0, 25),
@@ -131,7 +137,7 @@ export function writeStoredSession(patch: {
       savedAt: Date.now(),
       awaitingSearch,
       hasOwnList,
-    } satisfies HomesteadSession);
+    } satisfies StoredSession);
     writeStore(window.localStorage, SESSION_KEY, slim);
   }
   writeStore(window.sessionStorage, SESSION_KEY, payload);

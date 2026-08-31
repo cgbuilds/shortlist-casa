@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { BRAND_NAME } from "@/lib/brand";
 
 export function AppShell({
   email,
@@ -15,7 +16,7 @@ export function AppShell({
       <header className="z-20 shrink-0 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--paper)_92%,transparent)]">
         <div className="flex items-center justify-between gap-4 px-4 py-2.5">
           <Link href="/app" className="font-[family-name:var(--font-display)] text-lg tracking-tight">
-            Homestead Matrix
+            {BRAND_NAME}
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             {email ? <span className="hidden text-[var(--muted)] sm:inline">{email}</span> : null}

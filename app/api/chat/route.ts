@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       /* still return the recap so chat does not look failed */
     }
 
-    console.info("[homestead-chat]", {
+    console.info("[shortlist-chat]", {
       userId: user.id,
       provider: result.provider,
       model: result.model,
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(payload(result));
   } catch (err) {
-    console.error("[homestead-chat]", err);
+    console.error("[shortlist-chat]", err);
     return NextResponse.json(
       {
         reply: "I could not finish that turn. Send it once more — your last message is still in the thread.",

@@ -1,6 +1,6 @@
-# Homestead Matrix
+# Shortlist
 
-Chat-built must-haves (home profile) for family. **v1 grades a Redfin Favorites CSV** (the Valrico-area export is bundled). Users paste free-text gates in chat; the bot can only toggle a knowledge-base catalog.
+Chat-built must-haves (home profile) at [shortlist.casa](https://shortlist.casa). **v1 grades a Redfin Favorites CSV** (a Tampa-area sample is bundled). Users paste free-text gates in chat; the coach can only toggle a knowledge-base catalog.
 
 ## Local run
 
@@ -33,10 +33,10 @@ Get an OpenRouter key at [openrouter.ai/keys](https://openrouter.ai/keys). Put i
 
 Priority: OpenRouter → Groq → OpenAI → built-in coach.
 
-Other env vars: `NEXT_PUBLIC_SUPABASE_*` (family logins), `RENTCAST_API_KEY` (optional live search, not the v1 path).
+Other env vars: `NEXT_PUBLIC_SUPABASE_*` (family logins), `RENTCAST_API_KEY` (optional live search, not the v1 path). Set `NEXT_PUBLIC_SITE_URL=https://shortlist.casa` in production.
 
 ## GitHub + Vercel
 
-Create a GitHub repo, `git push`, Import in Vercel, paste env vars.
+Create a GitHub repo, `git push`, Import in Vercel, paste env vars. Attach `shortlist.casa` as the production domain.
 
-Supabase SQL: [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql). Redirect URL: `https://<app>.vercel.app/auth/callback`.
+Supabase SQL: [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql). Redirect URL: `https://shortlist.casa/auth/callback`.

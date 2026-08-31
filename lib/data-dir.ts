@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "fs";
 
 /** Writable on Vercel lambdas; local/dev uses repo `.data`. */
 export function dataDir() {
-  if (process.env.VERCEL) return join("/tmp", "homestead-data");
+  if (process.env.VERCEL) return join("/tmp", "shortlist-data");
   return join(process.cwd(), ".data");
 }
 

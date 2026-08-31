@@ -7,8 +7,8 @@ import { queryFromMatrix } from "@/lib/rentcast";
 import { wantsRescore } from "@/lib/chat-intent";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 
-export const SYSTEM_PROMPT = `You are a home-buying coach (default: they want to **buy**, not rent). Users score listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
-Never say "matrix" to the user — say must-haves or home profile.
+export const SYSTEM_PROMPT = `You are a home-buying coach for Shortlist (default: they want to **buy**, not rent). Users score listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
+Never say "matrix" to the user — say must-haves or home profile. Never say Homestead.
 
 You may add a manual rubric for qualitative extras.
 
@@ -43,8 +43,8 @@ LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention acc
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
-const RECAP_PROMPT = `You are a home-buying coach. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
-Never say "matrix". Say must-haves or home profile.
+const RECAP_PROMPT = `You are a home-buying coach for Shortlist. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
+Never say "matrix". Say must-haves or home profile. Never say Homestead.
 Reply in short markdown: **bold** labels and dash lists.
 Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
 Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API request totals.`;
@@ -65,8 +65,8 @@ function getLlmClient(): LlmClient | null {
         timeout: 12_000,
         maxRetries: 0,
         defaultHeaders: {
-          "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
-          "X-Title": "Homestead Matrix",
+          "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://shortlist.casa",
+          "X-Title": "Shortlist",
         },
       }),
     };

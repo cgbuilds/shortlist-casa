@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
-import { ChatPanel, CHAT_DISMISSED_KEY } from "@/components/ChatPanel";
+import { ChatPanel, CHAT_DISMISSED_KEY, LEGACY_CHAT_DISMISSED_KEY } from "@/components/ChatPanel";
 import { ChatFab, ChatSheet } from "@/components/ChatSheet";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
@@ -22,7 +22,8 @@ const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m
 });
 
 type Row = { listing: PropertyListing; grade: GradeResult };
-const BANNER_KEY = "homestead-starter-banner-dismissed";
+const BANNER_KEY = "shortlist-starter-banner-dismissed";
+const LEGACY_BANNER_KEY = "homestead-starter-banner-dismissed";
 
 function confirmScoring(kind: "live" | "cache" | "score", data?: SearchResponse) {
   if (!data) return "Could not finish that action.";
@@ -85,13 +86,21 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }, []);
 
   useEffect(() => {
-    if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
+    if (
+      window.sessionStorage.getItem(BANNER_KEY) === "1" ||
+      window.sessionStorage.getItem(LEGACY_BANNER_KEY) === "1"
+    ) {
+      setShowBanner(false);
+    }
     try {
       const welcome = new URLSearchParams(window.location.search).get("welcome");
       if (welcome === "1") {
         setChatOpen(true);
         window.history.replaceState({}, "", "/app");
-      } else if (window.sessionStorage.getItem(CHAT_DISMISSED_KEY) === "1") {
+      } else if (
+        window.sessionStorage.getItem(CHAT_DISMISSED_KEY) === "1" ||
+        window.sessionStorage.getItem(LEGACY_CHAT_DISMISSED_KEY) === "1"
+      ) {
         setChatOpen(false);
       } else {
         setChatOpen(true);
