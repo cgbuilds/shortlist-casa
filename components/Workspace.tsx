@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
-import { ChatPanel, CHAT_DISMISSED_KEY, LEGACY_CHAT_DISMISSED_KEY } from "@/components/ChatPanel";
+import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_USED_KEY, LEGACY_CHAT_DISMISSED_KEY } from "@/components/ChatPanel";
 import { ChatFab, ChatSheet } from "@/components/ChatSheet";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
@@ -64,6 +64,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [needListHint, setNeedListHint] = useState(false);
   const [hasOwnList, setHasOwnList] = useState(false);
+  const [chatUsed, setChatUsed] = useState(false);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
@@ -93,6 +94,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       setShowBanner(false);
     }
     try {
+      if (window.sessionStorage.getItem(CHAT_USED_KEY) === "1") setChatUsed(true);
       const welcome = new URLSearchParams(window.location.search).get("welcome");
       if (welcome === "1") {
         setChatOpen(true);
@@ -445,7 +447,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           {chatOpen ? null : (
             <ChatFab
               className="absolute bottom-4 right-4 z-20"
-              nudge={showBanner || needListHint}
+              nudge={!chatUsed}
               onClick={openChat}
             />
           )}
@@ -480,6 +482,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           actionNotice={actionNotice}
           onChatEvent={onChatEvent}
           onClose={closeChat}
+          invite={!chatUsed}
+          onTalked={() => setChatUsed(true)}
           extra={
             keyboardOpen ? null : (
               <div className="max-h-[min(10rem,28svh)] shrink-0 overflow-y-auto overscroll-contain border-t border-[var(--line)]">

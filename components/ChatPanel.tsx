@@ -8,6 +8,7 @@ import { wantsRescore, looksLikeCriteria } from "@/lib/chat-intent";
 export const CHAT_STORAGE_KEY = "shortlist-chat-messages";
 export const CHAT_DISMISSED_KEY = "shortlist-chat-dismissed";
 export const LEGACY_CHAT_DISMISSED_KEY = "homestead-chat-dismissed";
+export const CHAT_USED_KEY = "shortlist-chat-used";
 const LEGACY_CHAT_STORAGE_KEY = "homestead-chat-messages";
 
 const DEFAULT_MESSAGES: ChatMessage[] = [
@@ -66,6 +67,8 @@ export function ChatPanel({
   actionNotice,
   onClose,
   extra,
+  invite = false,
+  onTalked,
 }: {
   matrix: UserMatrix;
   onChatEvent: (event: {
@@ -80,6 +83,8 @@ export function ChatPanel({
   actionNotice?: { id: number; text: string } | null;
   onClose?: () => void;
   extra?: ReactNode;
+  invite?: boolean;
+  onTalked?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
   const [hydrated, setHydrated] = useState(false);
@@ -88,11 +93,34 @@ export function ChatPanel({
   const [committed, setCommitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const talkedRef = useRef(false);
+  const [inviting, setInviting] = useState(invite);
+
+  function markTalked() {
+    if (talkedRef.current) return;
+    talkedRef.current = true;
+    setInviting(false);
+    try {
+      window.sessionStorage.setItem(CHAT_USED_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    onTalked?.();
+  }
 
   useEffect(() => {
     const stored = readStoredMessages();
     if (stored) setMessages(stored);
+    try {
+      if (stored?.some((m) => m.role === "user") || window.sessionStorage.getItem(CHAT_USED_KEY) === "1") {
+        markTalked();
+      }
+    } catch {
+      /* ignore */
+    }
     setHydrated(true);
+    // First paint only — onTalked is invoked via markTalked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -158,6 +186,7 @@ export function ChatPanel({
   async function send(preset?: string) {
     const next = (preset ?? text).trim();
     if (!next || pending) return;
+    markTalked();
     lastFailed.current = next;
     setText("");
     const last = messages[messages.length - 1];
@@ -315,7 +344,9 @@ export function ChatPanel({
           }}
           placeholder="Tampa, FL · 3 bed · 2 bath · SFR. Enter to send · Shift+Enter for a new line"
           rows={2}
-          className="w-full rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-base"
+          className={`w-full rounded-xl border bg-[var(--paper)] px-3 py-2 text-base ${
+            inviting ? "chat-composer-pulse border-[var(--accent)]" : "border-[var(--line)]"
+          }`}
         />
         <div className="mt-2 flex gap-2">
           {onClose ? (

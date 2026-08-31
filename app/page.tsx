@@ -14,7 +14,9 @@ export default async function HomePage() {
         <h1 className="mt-3 font-[family-name:var(--font-display)] text-5xl leading-tight">
           {BRAND_TAGLINE}
         </h1>
-        <p className="mt-4 max-w-md text-[var(--muted)]">{BRAND_BLURB}</p>
+        <p className="mt-4 max-w-md text-[var(--muted)]">
+          {BRAND_BLURB} Start in Chat — that is how you set must-haves.
+        </p>
       </div>
       <div className="rounded-3xl border border-[var(--line)] bg-[var(--paper-2)] p-6 shadow-sm">
         <AuthPanel />

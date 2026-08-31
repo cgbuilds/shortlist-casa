@@ -87,12 +87,12 @@ export function ChatSheet({
       />
       <div
         role="dialog"
-        aria-label="AI assist"
+        aria-label="Tell Chat your must-haves"
         aria-modal="true"
         className="relative z-10 flex h-[min(92dvh,100%)] max-h-[min(92dvh,100%)] w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-[var(--paper-2)] pt-[env(safe-area-inset-top)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:pt-0"
       >
         <div className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
-          <p className="text-base font-medium">AI assist</p>
+          <p className="text-base font-medium">Tell Chat your must-haves</p>
           <button
             type="button"
             className="inline-flex min-h-11 min-w-[4.5rem] items-center justify-center rounded-xl bg-[var(--ink)] px-4 text-base font-medium text-[var(--paper)]"
@@ -120,9 +120,9 @@ export function ChatFab({
     <button
       type="button"
       onClick={onClick}
-      aria-label="Open chat"
-      title="Chat"
-      className={`inline-flex h-12 items-center gap-2 rounded-full bg-[var(--accent)] px-4 text-sm font-medium text-white shadow-lg hover:opacity-95 ${nudge ? "chat-nudge" : ""} ${className}`}
+      aria-label="Tell Chat your must-haves"
+      title="Tell Chat your must-haves"
+      className={`inline-flex h-12 items-center gap-2 rounded-full bg-[var(--accent)] px-4 text-sm font-medium text-white shadow-lg hover:opacity-95 ${nudge ? "chat-bounce" : ""} ${className}`}
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
         <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" strokeLinejoin="round" />
