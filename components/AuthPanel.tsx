@@ -10,7 +10,7 @@ export function AuthPanel() {
 
   async function demo() {
     await fetch("/api/demo", { method: "POST" });
-    window.location.href = "/app";
+    window.location.href = "/app?welcome=1";
   }
 
   async function magic(e: FormEvent) {

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
-import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_STORAGE_KEY } from "@/components/ChatPanel";
+import { ChatPanel, CHAT_DISMISSED_KEY } from "@/components/ChatPanel";
 import { ChatFab, ChatSheet } from "@/components/ChatSheet";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
@@ -52,7 +52,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [cacheCount, setCacheCount] = useState(0);
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const [showBanner, setShowBanner] = useState(true);
   const [regrading, setRegrading] = useState(false);
   const [scoreProgress, setScoreProgress] = useState<Pick<RankProgress, "analyzed" | "total" | "processing"> | null>(
@@ -87,14 +87,17 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   useEffect(() => {
     if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
     try {
-      if (window.sessionStorage.getItem(CHAT_DISMISSED_KEY) !== "1") {
-        const raw = window.sessionStorage.getItem(CHAT_STORAGE_KEY);
-        const parsed = raw ? (JSON.parse(raw) as { role?: string }[]) : [];
-        const hasUserTurn = Array.isArray(parsed) && parsed.some((m) => m.role === "user");
-        if (!hasUserTurn) setChatOpen(true);
+      const welcome = new URLSearchParams(window.location.search).get("welcome");
+      if (welcome === "1") {
+        setChatOpen(true);
+        window.history.replaceState({}, "", "/app");
+      } else if (window.sessionStorage.getItem(CHAT_DISMISSED_KEY) === "1") {
+        setChatOpen(false);
+      } else {
+        setChatOpen(true);
       }
     } catch {
-      /* keep chat closed if storage is messy */
+      setChatOpen(true);
     }
     const html = document.documentElement;
     const body = document.body;

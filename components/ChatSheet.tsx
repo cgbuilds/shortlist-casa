@@ -4,17 +4,14 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 function pinToVisualViewport(el: HTMLElement) {
   const vv = window.visualViewport;
-  if (!vv) {
-    el.style.top = "0px";
-    el.style.left = "0px";
-    el.style.width = "100%";
-    el.style.height = "100%";
-    return;
-  }
-  el.style.top = `${vv.offsetTop}px`;
-  el.style.left = `${vv.offsetLeft}px`;
-  el.style.width = `${vv.width}px`;
-  el.style.height = `${vv.height}px`;
+  const width = Math.max(vv?.width || 0, window.innerWidth || 0, 320);
+  const height = Math.max(vv?.height || 0, window.innerHeight || 0, 480);
+  el.style.top = `${vv?.offsetTop ?? 0}px`;
+  el.style.left = `${vv?.offsetLeft ?? 0}px`;
+  el.style.width = `${width}px`;
+  el.style.height = `${height}px`;
+  el.style.right = "auto";
+  el.style.bottom = "auto";
 }
 
 export function ChatSheet({
@@ -29,9 +26,11 @@ export function ChatSheet({
   children: ReactNode;
 }) {
   const overlay = useRef<HTMLDivElement>(null);
+  const openedAt = useRef(0);
 
   useEffect(() => {
     if (!open) return;
+    openedAt.current = Date.now();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -54,11 +53,13 @@ export function ChatSheet({
       onKeyboard?.(keyboard);
     };
     apply();
+    const id = window.setTimeout(apply, 50);
     const vv = window.visualViewport;
     vv?.addEventListener("resize", apply);
     vv?.addEventListener("scroll", apply);
     window.addEventListener("scroll", apply, { passive: true });
     return () => {
+      window.clearTimeout(id);
       vv?.removeEventListener("resize", apply);
       vv?.removeEventListener("scroll", apply);
       window.removeEventListener("scroll", apply);
@@ -67,19 +68,28 @@ export function ChatSheet({
 
   if (!open) return null;
 
+  function closeFromBackdrop() {
+    if (Date.now() - openedAt.current < 900) return;
+    onClose();
+  }
+
   return (
-    <div ref={overlay} className="fixed z-50 flex overflow-hidden sm:items-center sm:justify-end sm:p-6" style={{ inset: 0 }}>
+    <div
+      ref={overlay}
+      className="fixed z-50 flex items-end overflow-hidden sm:items-center sm:justify-end sm:p-6"
+      style={{ inset: 0 }}
+    >
       <button
         type="button"
         className="absolute inset-0 bg-[color-mix(in_oklab,var(--ink)_35%,transparent)]"
         aria-label="Close chat"
-        onClick={onClose}
+        onClick={closeFromBackdrop}
       />
       <div
         role="dialog"
         aria-label="AI assist"
         aria-modal="true"
-        className="relative z-10 flex h-full max-h-full w-full min-h-0 flex-col overflow-hidden border-[var(--line)] bg-[var(--paper-2)] pt-[env(safe-area-inset-top)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:border sm:pt-0"
+        className="relative z-10 flex h-[min(92dvh,100%)] max-h-[min(92dvh,100%)] w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-[var(--paper-2)] pt-[env(safe-area-inset-top)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:pt-0"
       >
         <div className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
           <p className="text-base font-medium">AI assist</p>
