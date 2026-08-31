@@ -7,6 +7,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { ensureMatrix } from "@/lib/matrix-tools";
 import { findRedfinListing } from "@/lib/redfin-csv";
 import { recallListing, rememberListing } from "@/lib/rentcast";
+import { sanitizeListings } from "@/lib/listings-payload";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
 export const DEMO_COOKIE = "pm_demo";
@@ -157,6 +158,50 @@ export async function saveSearch(user: SessionUser, query: unknown, listingIds: 
   const supabase = await createSupabaseServer();
   if (!supabase) return;
   await supabase.from("searches").insert({ user_id: user.id, query, listing_ids: listingIds });
+}
+
+export async function saveListingSet(user: SessionUser, listings: PropertyListing[], source: string) {
+  if (!listings.length) return;
+  listings.forEach(rememberListing);
+  if (user.demo || !isSupabaseConfigured()) return;
+  const supabase = await createSupabaseServer();
+  if (!supabase) return;
+  await supabase.from("searches").insert({
+    user_id: user.id,
+    query: { kind: "listing-set", source, listings },
+    listing_ids: listings.map((l) => l.id),
+  });
+}
+
+export async function loadListingSet(user: SessionUser): Promise<PropertyListing[]> {
+  if (user.demo || !isSupabaseConfigured()) return [];
+  const supabase = await createSupabaseServer();
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("searches")
+    .select("query")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  for (const row of data ?? []) {
+    const listings = sanitizeListings((row.query as { listings?: unknown } | null)?.listings);
+    if (listings.length) return listings;
+  }
+  const { data: grades } = await supabase
+    .from("graded_listings")
+    .select("property")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  const seen = new Set<string>();
+  const fromGrades: PropertyListing[] = [];
+  for (const row of grades ?? []) {
+    const listing = sanitizeListings([row.property])[0];
+    if (!listing || seen.has(listing.id)) continue;
+    seen.add(listing.id);
+    fromGrades.push(listing);
+  }
+  return fromGrades;
 }
 
 export async function saveGrade(user: SessionUser, listing: PropertyListing, scores: unknown) {

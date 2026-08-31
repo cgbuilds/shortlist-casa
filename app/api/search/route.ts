@@ -18,12 +18,14 @@ import {
   listingsFromCache,
   livePullNotice,
   markFetched,
+  rememberLivePull,
   withUserQueue,
   RENTCAST_CAP_MESSAGE,
 } from "@/lib/listing-cache";
 import { rankListings, type RankRow } from "@/lib/rank-listings";
 import { ensureMatrix } from "@/lib/matrix-tools";
-import { getSessionUser, getUserListings, getCsvMeta, loadActiveMatrix, saveCsvListings, adoptLiveListings, saveGrade, saveSearch } from "@/lib/session";
+import { getSessionUser, getUserListings, getCsvMeta, loadActiveMatrix, saveCsvListings, adoptLiveListings, saveGrade, saveSearch, saveListingSet, loadListingSet } from "@/lib/session";
+import { sanitizeListings } from "@/lib/listings-payload";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
 function ndjsonStream(run: (emit: (obj: unknown) => void) => Promise<void>) {
@@ -80,7 +82,7 @@ function packResults(ranked: RankRow[]) {
   const results = takeTopListings(ranked);
   const clip =
     totalMatched > TOP_LISTING_COUNT ? ` Showing the top ${results.length} of ${totalMatched} by score.` : "";
-  return { results, totalMatched, clip };
+  return { results, totalMatched, clip, listings: ranked.map((r) => r.listing) };
 }
 
 function filterList(
@@ -129,6 +131,7 @@ export async function POST(request: Request) {
     draft?: UserMatrix;
     force?: boolean;
     stream?: boolean;
+    listings?: unknown;
   };
 
   const matrix = ensureMatrix(body.draft ?? (await loadActiveMatrix(user)));
@@ -150,6 +153,7 @@ export async function POST(request: Request) {
         notice: `Saved ${parsed.length} homes from ${filename}. This file stays on your account — ask chat to rescore it until you upload a new CSV.${packed.clip}`,
         results: packed.results,
         totalMatched: packed.totalMatched,
+        listings: packed.listings,
         saved,
         quota: getLiveQuota(user.id),
         cache: getLiveCache(user.id),
@@ -234,6 +238,7 @@ export async function POST(request: Request) {
       listings.forEach(rememberListing);
       return respondRanked(body.stream, filtered, matrix, async (ranked) => {
         await saveSearch(user, { source: "live", query, fromCache, pulled }, ranked.map((r) => r.listing.id));
+        await saveListingSet(user, ranked.map((r) => r.listing), pulled ? "live" : "cache");
         for (const row of ranked) await saveGrade(user, row.listing, row.grade);
         const packed = packResults(ranked);
         const top = ranked.filter((r) => !r.grade.mustHaveFailed);
@@ -255,6 +260,7 @@ export async function POST(request: Request) {
           notice,
           results: packed.results,
           totalMatched: packed.totalMatched,
+          listings: packed.listings,
           quota,
           cache: getLiveCache(user.id),
           fromCache,
@@ -280,8 +286,10 @@ export async function POST(request: Request) {
   const saved = getCsvMeta(user);
   const csv = getUserListings(user);
   if (body.source === "regrade" || !body.source) {
+    const fromClient = sanitizeListings(body.listings);
     const liveList = listingsFromCache(user.id);
-    const listings = liveList?.length ? liveList : csv;
+    let listings = fromClient.length ? fromClient : liveList?.length ? liveList : csv;
+    if (!listings.length) listings = await loadListingSet(user);
     if (!listings.length) {
       const baseline = baselineStatus(matrix);
       const why = !baseline.complete
@@ -300,16 +308,21 @@ export async function POST(request: Request) {
       );
     }
     const query = queryFromMatrix(matrix);
-    const scoped = liveList?.length ? listings : filterList(listings, body);
-    const working = filterListingsByQuery(scoped, query);
+    if (fromClient.length) {
+      rememberLivePull(user.id, query, fromClient);
+      adoptLiveListings(user, fromClient);
+    }
+    const scoped = fromClient.length ? fromClient : liveList?.length ? listings : filterList(listings, body);
+    const working = fromClient.length ? fromClient : filterListingsByQuery(scoped, query);
     return respondRanked(body.stream, working, matrix, async (ranked) => {
       await saveSearch(user, { source: "regrade" }, ranked.map((r) => r.listing.id));
+      await saveListingSet(user, ranked.map((r) => r.listing), "regrade");
       for (const row of ranked) await saveGrade(user, row.listing, row.grade);
       const packed = packResults(ranked);
       const incomplete = ranked.filter((r) => r.grade.band === "incomplete").length;
       const cache = getLiveCache(user.id);
       const quota = getLiveQuota(user.id);
-      const from = liveList?.length ? "live cache" : `saved file ${saved?.filename ?? "CSV"}`;
+      const from = fromClient.length || liveList?.length ? "your last search" : `saved file ${saved?.filename ?? "CSV"}`;
       const notice =
         !ranked.length && scoped.length
           ? matrix.intent === "rent"
@@ -319,10 +332,11 @@ export async function POST(request: Request) {
             ? `Scored ${ranked.length} homes from ${from}, but every score is incomplete — your must-haves are not set, or listings lack year/type/price.${packed.clip}`
             : `Scored ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.${packed.clip}`;
       return {
-        source: liveList?.length ? "cache" : "saved",
+        source: fromClient.length || liveList?.length ? "cache" : "saved",
         notice,
         results: packed.results,
         totalMatched: packed.totalMatched,
+        listings: packed.listings,
         quota,
         cache,
         saved,
@@ -346,6 +360,7 @@ export async function POST(request: Request) {
         notice: `Scored ${packed.totalMatched} homes from saved file ${saved?.filename ?? "your CSV"}.${packed.clip}`,
         results: packed.results,
         totalMatched: packed.totalMatched,
+        listings: packed.listings,
         quota: getLiveQuota(user.id),
         cache: getLiveCache(user.id),
         saved,
@@ -368,6 +383,7 @@ export async function POST(request: Request) {
         notice: `Showing ${packed.clip ? `the top ${packed.results.length} of ${packed.totalMatched}` : `${packed.totalMatched}`} homes from the sample Valrico CSV. Your uploaded file is unchanged${saved ? ` (${saved.filename}, ${saved.count} homes)` : ""}.`,
         results: packed.results,
         totalMatched: packed.totalMatched,
+        listings: packed.listings,
         quota: getLiveQuota(user.id),
         cache: getLiveCache(user.id),
         saved,

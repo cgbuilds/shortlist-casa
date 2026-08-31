@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
 import { wantsRescore } from "@/lib/chat-intent";
@@ -40,6 +40,7 @@ export function ChatPanel({
   scoreProgress,
   actionNotice,
   onClose,
+  extra,
 }: {
   matrix: UserMatrix;
   onChatEvent: (event: {
@@ -53,6 +54,7 @@ export function ChatPanel({
   scoreProgress?: { analyzed: number; total: number; processing: number } | null;
   actionNotice?: { id: number; text: string } | null;
   onClose?: () => void;
+  extra?: ReactNode;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
   const [hydrated, setHydrated] = useState(false);
@@ -184,8 +186,9 @@ export function ChatPanel({
           </p>
         ) : null}
       </div>
+      {extra}
       <form
-        className="shrink-0 border-t border-[var(--line)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        className="relative z-20 shrink-0 border-t border-[var(--line)] bg-[var(--paper-2)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         suppressHydrationWarning
         onSubmit={(e) => {
           e.preventDefault();

@@ -13,6 +13,7 @@ import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
 import { postSearch, type SearchResponse } from "@/lib/search-client";
 import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
+import { readStoredPool, writeStoredPool } from "@/lib/listings-payload";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -60,13 +61,16 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   );
   const [job, setJob] = useState<{ tone: "err"; text: string } | null>(null);
   const [actionNotice, setActionNotice] = useState<{ id: number; text: string } | null>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
   const leftStarter = useRef(false);
+  const poolRef = useRef<PropertyListing[]>([]);
 
   useEffect(() => {
     if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
+    poolRef.current = readStoredPool();
     const html = document.documentElement;
     const body = document.body;
     const prevHtml = html.style.overflow;
@@ -104,6 +108,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   const applyGrade = useCallback((data: {
     results?: Row[];
+    listings?: PropertyListing[];
     totalMatched?: number;
     notice?: string;
     error?: string;
@@ -117,6 +122,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (leftStarter.current && !opts?.allowStarter && (src === "redfin-favorites" || src === "favorites")) {
       return;
     }
+    if (Array.isArray(data.listings) && data.listings.length && !opts?.partial) {
+      poolRef.current = data.listings;
+      writeStoredPool(data.listings);
+    }
     if (Array.isArray(data.results)) {
       if (opts?.partial && data.results.length === 0) return;
       if (data.results.length || !data.error) {
@@ -125,6 +134,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         setTotalMatched(data.totalMatched ?? data.results.length);
         if (top[0]) setSelectedId(top[0].listing.id);
         if (!opts?.partial) setMapSetKey(top.map((r) => r.listing.id).join("|") || "empty");
+        if (!opts?.partial && !data.listings?.length && top.length) {
+          poolRef.current = top.map((r) => r.listing);
+          writeStoredPool(poolRef.current);
+        }
         if (src === "rentcast" || src === "cache" || src === "upload" || src === "saved" || src === "live") {
           leftStarter.current = true;
         }
@@ -176,7 +189,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }
 
   async function refreshGrades(m?: UserMatrix) {
-    return runScoring({ source: "regrade", draft: m ?? matrix });
+    const listings = poolRef.current.length ? poolRef.current : readStoredPool();
+    return runScoring({ source: "regrade", draft: m ?? matrix, listings });
   }
 
   async function runLive(m: UserMatrix, force: boolean) {
@@ -329,7 +343,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         </div>
       </div>
 
-      <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)}>
+      <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)} onKeyboard={setKeyboardOpen}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <ChatPanel
           matrix={matrix}
@@ -339,53 +353,57 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           actionNotice={actionNotice}
           onChatEvent={onChatEvent}
           onClose={() => setChatOpen(false)}
-        />
-        </div>
-        <div className="max-h-[min(12rem,32svh)] shrink-0 overflow-y-auto overscroll-contain border-t border-[var(--line)]">
-          <RedfinUpload
-            compact
-            heading="Actions"
-            matrix={matrix}
-            liveSearch={liveSearch}
-            signupUrl={signupUrl}
-            remaining={remaining}
-            userLimit={userLimit}
-            globalRemaining={globalRemaining}
-            globalUsed={globalUsed}
-            globalLimit={globalLimit}
-            cacheCount={cacheCount}
-            savedFilename={savedFilename}
-            savedCount={savedCount}
-            onSearchStart={() => beginScore()}
-            onGraded={(data) => {
-              setScoreProgress(null);
-              applyGrade(data as Parameters<typeof applyGrade>[0], scoreGen.current, {
-                allowStarter: data.source === "redfin-favorites",
-              });
-              noticeId.current += 1;
-              const kind = data.pulled || data.source === "rentcast" ? "live" : "score";
-              setActionNotice({
-                id: noticeId.current,
-                text: data.error
-                  ? data.error
-                  : confirmScoring(kind, data as SearchResponse),
-              });
-              setChatOpen(true);
-            }}
-            onScoreProgress={(p) => {
-              setScoreProgress(p);
-              applyGrade({ results: p.results as Row[], totalMatched: p.totalMatched }, scoreGen.current, {
-                partial: true,
-              });
-            }}
-          />
-          <div className="border-t border-[var(--line)] px-3 pb-3">
-            <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">
-              <div className="max-h-40 overflow-y-auto">
-                <MatrixPreview matrix={matrix} />
+          extra={
+            keyboardOpen ? null : (
+              <div className="max-h-[min(10rem,28svh)] shrink-0 overflow-y-auto overscroll-contain border-t border-[var(--line)]">
+                <RedfinUpload
+                  compact
+                  heading="Actions"
+                  matrix={matrix}
+                  liveSearch={liveSearch}
+                  signupUrl={signupUrl}
+                  remaining={remaining}
+                  userLimit={userLimit}
+                  globalRemaining={globalRemaining}
+                  globalUsed={globalUsed}
+                  globalLimit={globalLimit}
+                  cacheCount={cacheCount}
+                  savedFilename={savedFilename}
+                  savedCount={savedCount}
+                  onSearchStart={() => beginScore()}
+                  onGraded={(data) => {
+                    setScoreProgress(null);
+                    applyGrade(data as Parameters<typeof applyGrade>[0], scoreGen.current, {
+                      allowStarter: data.source === "redfin-favorites",
+                    });
+                    noticeId.current += 1;
+                    const kind = data.pulled || data.source === "rentcast" ? "live" : "score";
+                    setActionNotice({
+                      id: noticeId.current,
+                      text: data.error
+                        ? data.error
+                        : confirmScoring(kind, data as SearchResponse),
+                    });
+                    setChatOpen(true);
+                  }}
+                  onScoreProgress={(p) => {
+                    setScoreProgress(p);
+                    applyGrade({ results: p.results as Row[], totalMatched: p.totalMatched }, scoreGen.current, {
+                      partial: true,
+                    });
+                  }}
+                />
+                <div className="border-t border-[var(--line)] px-3 pb-3">
+                  <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">
+                    <div className="max-h-40 overflow-y-auto">
+                      <MatrixPreview matrix={matrix} />
+                    </div>
+                  </Fold>
+                </div>
               </div>
-            </Fold>
-          </div>
+            )
+          }
+        />
         </div>
       </ChatSheet>
     </div>

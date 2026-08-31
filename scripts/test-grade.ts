@@ -15,6 +15,7 @@ import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiv
 import { outboundListingLinks } from "../lib/outbound-links";
 import { starterMatrix } from "../lib/starter-profile";
 import { wantsRescore } from "../lib/chat-intent";
+import { sanitizeListings } from "../lib/listings-payload";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -330,6 +331,8 @@ async function main() {
   assert(wantsRescore("score the list"), "score the list is a rescore ask");
   assert(wantsRescore("please rescore"), "rescore is a rescore ask");
   assert(!wantsRescore("pull live listings in Tampa"), "live pull is not a rescore ask");
+  assert(sanitizeListings([{ id: "a", address: "1 Main" }]).length === 1, "keeps a valid listing");
+  assert(sanitizeListings([{ address: "no id" }, null, "x"]).length === 0, "drops invalid listings");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,

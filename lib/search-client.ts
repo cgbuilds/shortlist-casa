@@ -1,10 +1,12 @@
 import { scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
+import type { PropertyListing } from "@/lib/types";
 
 export type SearchResponse = {
   error?: string;
   notice?: string;
   source?: string;
   results?: RankProgress["results"];
+  listings?: PropertyListing[];
   totalMatched?: number;
   quota?: {
     remaining: number;

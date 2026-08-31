@@ -24,6 +24,7 @@ export type GradePayload = {
   needsConfirm?: boolean;
   advice?: { advice?: string; coveragePct?: number | null; used?: number; userLimit?: number };
   saved?: { filename: string; count: number; savedAt: number } | null;
+  listings?: unknown[];
 };
 
 export function RedfinUpload({

@@ -20,10 +20,12 @@ function pinToVisualViewport(el: HTMLElement) {
 export function ChatSheet({
   open,
   onClose,
+  onKeyboard,
   children,
 }: {
   open: boolean;
   onClose: () => void;
+  onKeyboard?: (open: boolean) => void;
   children: ReactNode;
 }) {
   const overlay = useRef<HTMLDivElement>(null);
@@ -38,12 +40,18 @@ export function ChatSheet({
   }, [open, onClose]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      onKeyboard?.(false);
+      return;
+    }
     const el = overlay.current;
     if (!el) return;
     const apply = () => {
       window.scrollTo(0, 0);
       pinToVisualViewport(el);
+      const vv = window.visualViewport;
+      const keyboard = Boolean(vv && window.innerHeight - vv.height > 80);
+      onKeyboard?.(keyboard);
     };
     apply();
     const vv = window.visualViewport;
@@ -55,7 +63,7 @@ export function ChatSheet({
       vv?.removeEventListener("scroll", apply);
       window.removeEventListener("scroll", apply);
     };
-  }, [open]);
+  }, [open, onKeyboard]);
 
   if (!open) return null;
 
@@ -71,7 +79,7 @@ export function ChatSheet({
         role="dialog"
         aria-label="AI assist"
         aria-modal="true"
-        className="relative z-10 flex h-full max-h-full w-full min-h-0 flex-col overflow-hidden border-[var(--line)] bg-[var(--paper-2)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:border sm:pt-0"
+        className="relative z-10 flex h-full max-h-full w-full min-h-0 flex-col overflow-hidden border-[var(--line)] bg-[var(--paper-2)] pt-[env(safe-area-inset-top)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:border sm:pt-0"
       >
         <div className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
           <p className="text-base font-medium">AI assist</p>
