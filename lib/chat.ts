@@ -43,6 +43,12 @@ LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention acc
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
+const RECAP_PROMPT = `You are a home-buying coach. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
+Never say "matrix". Say must-haves or home profile.
+Reply in short markdown: **bold** labels and dash lists.
+Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
+Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API request totals.`;
+
 export type { ChatMessage } from "@/lib/types";
 
 type LlmClient = { client: OpenAI; model: string; provider: string };
@@ -56,7 +62,7 @@ function getLlmClient(): LlmClient | null {
       client: new OpenAI({
         apiKey: openrouter,
         baseURL: "https://openrouter.ai/api/v1",
-        timeout: 8_000,
+        timeout: 12_000,
         maxRetries: 0,
         defaultHeaders: {
           "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
@@ -103,6 +109,36 @@ export function chatProviderInfo() {
 
 function usesToolCalling(model: string) {
   return !/auto/i.test(model);
+}
+
+function recapProfile(matrix: UserMatrix) {
+  const enabled = Object.entries(matrix.dimensions)
+    .filter(([, d]) => d.enabled)
+    .slice(0, 12)
+    .map(([id, d]) => ({
+      id,
+      min: d.min,
+      max: d.max,
+      mustHave: d.mustHave,
+      prefs: d.prefs,
+    }));
+  return {
+    searchArea: matrix.searchArea,
+    intent: matrix.intent,
+    places: matrix.locationAllowlist,
+    maxPrice: matrix.budget.maxPrice,
+    enabled,
+  };
+}
+
+async function withTimeout<T>(ms: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    return await run(ac.signal);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export type ChatResult = {
@@ -165,8 +201,7 @@ async function runMatrixChatInner(
   const liveAdvice = opts?.userId ? adviseLiveSearch(opts.userId, queryFromMatrix(matrix)) : null;
   const applied = heuristicChat(matrix, userText, history, opts?.userId);
   const llm = getLlmClient();
-  // OpenRouter Auto routinely hangs ~12s then errors. Chat must not wait on it.
-  if (!llm || !usesToolCalling(llm.model)) {
+  if (!llm) {
     return {
       ...applied,
       provider: "heuristic",
@@ -176,6 +211,54 @@ async function runMatrixChatInner(
       toolRounds: 0,
       elapsedMs: Date.now() - started,
     };
+  }
+
+  // OpenRouter Auto (and similar) cannot reliably tool-call. Built-in parser applies
+  // must-haves; the model is primary for the user-facing recap.
+  if (!usesToolCalling(llm.model)) {
+    try {
+      const recap = await withTimeout(10_000, (signal) =>
+        llm.client.chat.completions.create(
+          {
+            model: llm.model,
+            messages: [
+              { role: "system", content: RECAP_PROMPT },
+              {
+                role: "system",
+                content: `Applied: ${applied.reply}\nProfile: ${JSON.stringify(recapProfile(applied.matrix))}${
+                  liveAdvice
+                    ? `\nLive searches ${liveAdvice.used}/${liveAdvice.userLimit} used, ${liveAdvice.remaining} left.`
+                    : ""
+                }`,
+              },
+              { role: "user", content: userText },
+            ],
+          },
+          { signal }
+        )
+      );
+      const reply = recap.choices[0]?.message?.content?.trim();
+      return {
+        ...applied,
+        reply: reply || applied.reply,
+        usedModel: Boolean(reply),
+        provider: llm.provider,
+        model: llm.model,
+        label: info.label,
+        toolRounds: 0,
+        elapsedMs: Date.now() - started,
+      };
+    } catch {
+      return {
+        ...applied,
+        provider: "heuristic",
+        model: "built-in",
+        label: "Built-in coach",
+        usedModel: false,
+        toolRounds: 0,
+        elapsedMs: Date.now() - started,
+      };
+    }
   }
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
