@@ -43,12 +43,6 @@ LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention acc
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
-const RECAP_PROMPT = `You are a home-buying coach. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
-Never say "matrix". Say must-haves or home profile.
-Reply in short markdown: **bold** labels and dash lists.
-Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
-Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API request totals.`;
-
 export type { ChatMessage } from "@/lib/types";
 
 type LlmClient = { client: OpenAI; model: string; provider: string };
@@ -62,7 +56,7 @@ function getLlmClient(): LlmClient | null {
       client: new OpenAI({
         apiKey: openrouter,
         baseURL: "https://openrouter.ai/api/v1",
-        timeout: 12_000,
+        timeout: 8_000,
         maxRetries: 0,
         defaultHeaders: {
           "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
@@ -76,7 +70,7 @@ function getLlmClient(): LlmClient | null {
     return {
       provider: "groq",
       model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-      client: new OpenAI({ apiKey: groq, baseURL: "https://api.groq.com/openai/v1", timeout: 12_000, maxRetries: 0 }),
+      client: new OpenAI({ apiKey: groq, baseURL: "https://api.groq.com/openai/v1", timeout: 8_000, maxRetries: 0 }),
     };
   }
   const openai = process.env.OPENAI_API_KEY;
@@ -84,7 +78,7 @@ function getLlmClient(): LlmClient | null {
     return {
       provider: "openai",
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-      client: new OpenAI({ apiKey: openai, timeout: 12_000, maxRetries: 0 }),
+      client: new OpenAI({ apiKey: openai, timeout: 8_000, maxRetries: 0 }),
     };
   }
   return null;
@@ -171,52 +165,17 @@ async function runMatrixChatInner(
   const liveAdvice = opts?.userId ? adviseLiveSearch(opts.userId, queryFromMatrix(matrix)) : null;
   const applied = heuristicChat(matrix, userText, history, opts?.userId);
   const llm = getLlmClient();
-  if (!llm) {
+  // OpenRouter Auto routinely hangs ~12s then errors. Chat must not wait on it.
+  if (!llm || !usesToolCalling(llm.model)) {
     return {
       ...applied,
       provider: "heuristic",
       model: "built-in",
       label: "Built-in coach",
+      usedModel: false,
       toolRounds: 0,
       elapsedMs: Date.now() - started,
     };
-  }
-
-  if (!usesToolCalling(llm.model)) {
-    try {
-      const recap = await llm.client.chat.completions.create({
-        model: llm.model,
-        messages: [
-          { role: "system", content: RECAP_PROMPT },
-          {
-            role: "system",
-            content: `Live search quota: ${JSON.stringify(liveAdvice)}\nApplied (source of truth): ${applied.reply}\nProfile: ${JSON.stringify(previewMatrix(applied.matrix))}`,
-          },
-          ...history.slice(-6).map((m) => ({ role: m.role, content: m.content }) as const),
-          { role: "user", content: userText },
-        ],
-      });
-      const reply = recap.choices[0]?.message?.content?.trim();
-      return {
-        ...applied,
-        reply: reply || applied.reply,
-        usedModel: true,
-        provider: llm.provider,
-        model: llm.model,
-        label: info.label,
-        toolRounds: 0,
-        elapsedMs: Date.now() - started,
-      };
-    } catch {
-      return {
-        ...applied,
-        provider: "heuristic",
-        model: "built-in",
-        label: "Built-in coach",
-        toolRounds: 0,
-        elapsedMs: Date.now() - started,
-      };
-    }
   }
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [

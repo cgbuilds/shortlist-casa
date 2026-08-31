@@ -112,7 +112,7 @@ export function ChatPanel({
   const lastFailed = useRef<string | null>(null);
 
   async function postChat(text: string, history: ChatMessage[]) {
-    const gate = abortAfter(20_000);
+    const gate = abortAfter(45_000);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
