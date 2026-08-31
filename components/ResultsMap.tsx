@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import L from "leaflet";
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -11,6 +11,31 @@ import { gradeCaption } from "@/lib/grade";
 
 const PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+const OSM_DE = "https://tile.openstreetmap.de/{z}/{x}/{y}.png";
+const ESRI =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+
+function MapTiles() {
+  const [url, setUrl] = useState(OSM_DE);
+  const osm = url === OSM_DE;
+  return (
+    <TileLayer
+      key={url}
+      attribution={
+        osm
+          ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          : "Tiles &copy; Esri"
+      }
+      url={url}
+      eventHandlers={{
+        tileerror: () => {
+          if (osm) setUrl(ESRI);
+        },
+      }}
+    />
+  );
+}
 
 function silenceDefaultMarkerIcon() {
   const proto = L.Icon.Default.prototype as L.Icon.Default & { _getIconUrl?: unknown };
@@ -74,11 +99,7 @@ export function ResultsMap({
       className="h-full w-full"
       scrollWheelZoom
     >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        subdomains="abcd"
-      />
+      <MapTiles />
       {points.length ? <FitBounds points={points} /> : null}
       <InvalidateSize tick={layoutTick} />
       {rows.map((row) => {
