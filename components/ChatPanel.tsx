@@ -101,9 +101,31 @@ export function ChatPanel({
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, text: next, draft: matrix }),
+        body: JSON.stringify({ messages: messages.slice(-12), text: next, draft: matrix }),
+        signal: AbortSignal.timeout(55_000),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data: {
+        reply?: string;
+        matrix?: UserMatrix;
+        commit?: boolean;
+        livePull?: boolean;
+        liveSearch?: boolean;
+        rescore?: boolean;
+        matrixChanged?: boolean;
+        error?: string;
+        provider?: string;
+        model?: string;
+        label?: string;
+        usedModel?: boolean;
+        toolRounds?: number;
+        elapsedMs?: number;
+      };
+      try {
+        data = JSON.parse(raw) as typeof data;
+      } catch {
+        throw new Error(res.status === 504 || res.status === 524 ? "Chat timed out. Try again." : `Chat failed (${res.status}).`);
+      }
       emitChatLog("response", {
         ok: res.ok,
         provider: data.provider,
@@ -120,19 +142,29 @@ export function ChatPanel({
       if (data.error) setError(data.error);
       const reply = data.reply ?? "Updated.";
       setMessages([...history, { role: "assistant", content: reply }]);
-      const rescore = Boolean(data.rescore) || wantsRescore(next);
-      if (data.matrix || data.livePull || data.liveSearch || rescore) {
-        const note = await onChatEvent({
-          matrix: data.matrix,
-          livePull: Boolean(data.livePull),
-          liveSearch: Boolean(data.liveSearch),
-          rescore,
-        });
-        if (note) {
-          setMessages((prev) => [...prev, { role: "assistant", content: note }]);
+      if (data.commit) setCommitted(true);
+      setPending(false);
+      const rescore = Boolean(data.rescore) || Boolean(data.matrixChanged) || wantsRescore(next);
+      const shouldAct = Boolean(data.livePull || data.liveSearch || rescore);
+      if (shouldAct) {
+        try {
+          const note = await onChatEvent({
+            matrix: data.matrixChanged || data.livePull || data.liveSearch || rescore ? data.matrix : undefined,
+            livePull: Boolean(data.livePull),
+            liveSearch: Boolean(data.liveSearch),
+            rescore,
+          });
+          if (note) {
+            setMessages((prev) => [...prev, { role: "assistant", content: note }]);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "list update failed";
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `Must-haves are saved. Could not refresh the list yet: ${message}` },
+          ]);
         }
       }
-      if (data.commit) setCommitted(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : "network error";
       emitChatLog("error", { message });

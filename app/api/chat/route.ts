@@ -4,6 +4,8 @@ import { getSessionUser, loadActiveMatrix, saveActiveMatrix } from "@/lib/sessio
 import { ensureMatrix } from "@/lib/matrix-tools";
 import type { UserMatrix } from "@/lib/types";
 
+export const maxDuration = 60;
+
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
     livePull: result.livePull,
     liveSearch: result.liveSearch,
     rescore: result.rescore,
+    matrixChanged: result.matrixChanged,
     usedModel: result.usedModel,
     provider: result.provider,
     model: result.model,

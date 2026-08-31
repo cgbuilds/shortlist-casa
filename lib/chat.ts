@@ -52,10 +52,14 @@ function getLlmClient(): LlmClient | null {
   if (openrouter) {
     return {
       provider: "openrouter",
-      model: process.env.OPENROUTER_MODEL || "openrouter/auto",
+      model: process.env.OPENROUTER_MODEL && process.env.OPENROUTER_MODEL !== "openrouter/auto"
+        ? process.env.OPENROUTER_MODEL
+        : "openai/gpt-4o-mini",
       client: new OpenAI({
         apiKey: openrouter,
         baseURL: "https://openrouter.ai/api/v1",
+        timeout: 12_000,
+        maxRetries: 0,
         defaultHeaders: {
           "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
           "X-Title": "Homestead Matrix",
@@ -68,7 +72,7 @@ function getLlmClient(): LlmClient | null {
     return {
       provider: "groq",
       model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-      client: new OpenAI({ apiKey: groq, baseURL: "https://api.groq.com/openai/v1" }),
+        client: new OpenAI({ apiKey: groq, baseURL: "https://api.groq.com/openai/v1", timeout: 12_000, maxRetries: 0 }),
     };
   }
   const openai = process.env.OPENAI_API_KEY;
@@ -76,7 +80,7 @@ function getLlmClient(): LlmClient | null {
     return {
       provider: "openai",
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-      client: new OpenAI({ apiKey: openai }),
+      client: new OpenAI({ apiKey: openai, timeout: 12_000, maxRetries: 0 }),
     };
   }
   return null;
@@ -106,6 +110,7 @@ export type ChatResult = {
   livePull?: boolean;
   liveSearch?: boolean;
   rescore?: boolean;
+  matrixChanged?: boolean;
   usedModel: boolean;
   provider: string;
   model?: string;
@@ -171,9 +176,10 @@ export async function runMatrixChat(
   let liveSearch = false;
   let guard = 0;
   let toolRounds = 0;
+  const before = JSON.stringify(previewMatrix(matrix));
 
   try {
-    while (guard < 6) {
+    while (guard < 4) {
       guard += 1;
       const completion = await llm.client.chat.completions.create({
         model: llm.model,
@@ -202,13 +208,15 @@ export async function runMatrixChat(
         }
         continue;
       }
+      const matrixChanged = JSON.stringify(previewMatrix(working)) !== before;
       return {
         reply: msg.content || "Updated.",
         matrix: working,
         commit,
         livePull,
         liveSearch,
-        rescore: wantsRescore(userText) && !livePull,
+        matrixChanged,
+        rescore: (wantsRescore(userText) || matrixChanged) && !livePull,
         usedModel: true,
         provider: llm.provider,
         model: llm.model,
@@ -217,13 +225,15 @@ export async function runMatrixChat(
         elapsedMs: Date.now() - started,
       };
     }
+    const matrixChanged = JSON.stringify(previewMatrix(working)) !== before;
     return {
       reply: "I updated your must-haves.",
       matrix: working,
       commit,
       livePull,
       liveSearch,
-      rescore: wantsRescore(userText) && !livePull,
+      matrixChanged,
+      rescore: (wantsRescore(userText) || matrixChanged) && !livePull,
       usedModel: true,
       provider: llm.provider,
       model: llm.model,
@@ -276,6 +286,7 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
   let commit = false;
   let livePull = false;
   let liveSearch = false;
+  const before = JSON.stringify(previewMatrix(matrix));
 
   const wantsRent =
     /\b(for rent|to rent|looking to rent|want to rent|want rentals|rental search|rent a (condo|home|townhouse|apartment))\b/.test(
@@ -598,5 +609,28 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     );
   }
 
-  return { reply: notes.join(" "), matrix: working, commit, livePull, liveSearch, rescore: wantsRescore(userText) && !livePull, usedModel: false };
+  const matrixChanged = JSON.stringify(previewMatrix(working)) !== before;
+  const recap = mustHaveLine(working);
+  if (recap && !notes.some((n) => n.includes("Must-haves:"))) notes.push(recap);
+  return {
+    reply: notes.join(" "),
+    matrix: working,
+    commit,
+    livePull,
+    liveSearch,
+    matrixChanged,
+    rescore: (wantsRescore(userText) || matrixChanged) && !livePull,
+    usedModel: false,
+  };
+}
+
+function mustHaveLine(matrix: UserMatrix) {
+  const enabled = Object.entries(matrix.dimensions).filter(([, d]) => d.enabled);
+  const bits = [
+    matrix.searchArea ? `Area: ${matrix.searchArea}` : "",
+    matrix.locationAllowlist.length ? `Places: ${matrix.locationAllowlist.join(", ")}` : "",
+    matrix.budget.maxPrice ? `Cap: $${matrix.budget.maxPrice.toLocaleString()}` : "",
+    ...enabled.slice(0, 6).map(([id, d]) => `${d.label ?? id}${d.min != null ? ` ≥ ${d.min}` : ""}`),
+  ].filter(Boolean);
+  return bits.length ? `**Must-haves:** ${bits.join(" · ")}.` : "";
 }

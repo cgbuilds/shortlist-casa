@@ -28,6 +28,8 @@ import { getSessionUser, getUserListings, getCsvMeta, loadActiveMatrix, saveCsvL
 import { sanitizeListings } from "@/lib/listings-payload";
 import type { PropertyListing, UserMatrix } from "@/lib/types";
 
+export const maxDuration = 60;
+
 function ndjsonStream(run: (emit: (obj: unknown) => void) => Promise<void>) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
