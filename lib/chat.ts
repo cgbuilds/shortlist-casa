@@ -133,6 +133,28 @@ export async function runMatrixChat(
   userText: string,
   opts?: { userId?: string }
 ): Promise<ChatResult> {
+  try {
+    return await runMatrixChatInner(matrix, history, userText, opts);
+  } catch {
+    const started = Date.now();
+    const applied = heuristicChat(matrix, userText, history, opts?.userId);
+    return {
+      ...applied,
+      provider: "heuristic",
+      model: "built-in",
+      label: "Built-in coach",
+      toolRounds: 0,
+      elapsedMs: Date.now() - started,
+    };
+  }
+}
+
+async function runMatrixChatInner(
+  matrix: UserMatrix,
+  history: ChatMessage[],
+  userText: string,
+  opts?: { userId?: string }
+): Promise<ChatResult> {
   const started = Date.now();
   const info = chatProviderInfo();
   if (opts?.userId && isPoliteExtraSearchAsk(userText)) {

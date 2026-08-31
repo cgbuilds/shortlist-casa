@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
-import { ChatPanel } from "@/components/ChatPanel";
+import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_STORAGE_KEY } from "@/components/ChatPanel";
 import { ChatFab, ChatSheet } from "@/components/ChatSheet";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
@@ -73,8 +73,29 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const matrixRef = useRef(matrix);
   matrixRef.current = matrix;
 
+  const openChat = useCallback(() => setChatOpen(true), []);
+  const closeChat = useCallback(() => {
+    setChatOpen(false);
+    setKeyboardOpen(false);
+    try {
+      window.sessionStorage.setItem(CHAT_DISMISSED_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
+    try {
+      if (window.sessionStorage.getItem(CHAT_DISMISSED_KEY) !== "1") {
+        const raw = window.sessionStorage.getItem(CHAT_STORAGE_KEY);
+        const parsed = raw ? (JSON.parse(raw) as { role?: string }[]) : [];
+        const hasUserTurn = Array.isArray(parsed) && parsed.some((m) => m.role === "user");
+        if (!hasUserTurn) setChatOpen(true);
+      }
+    } catch {
+      /* keep chat closed if storage is messy */
+    }
     const html = document.documentElement;
     const body = document.body;
     const prevHtml = html.style.overflow;
@@ -359,27 +380,22 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             {rows.length
               ? "Only sample homes that still fit your must-haves are shown. This is not a live search yet."
               : "None of the sample homes fit those must-haves."}{" "}
-            Upload a Redfin Favorites CSV or run a live search to load a matching list.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm text-white"
-              onClick={() => setChatOpen(true)}
-            >
-              Open chat to search or upload
+            Upload a Redfin Favorites CSV or run a live search from{" "}
+            <button type="button" className="font-medium underline" onClick={openChat}>
+              Chat
             </button>
-          </div>
+            .
+          </p>
           {progressLine ? <p className="mt-2 text-xs text-[var(--muted)]">{progressLine}</p> : null}
         </div>
       ) : showBanner && !hasOwnList ? (
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm">
           <p className="min-w-0 text-[var(--ink)]">
-            Starter homes are on the map.{" "}
-            <button type="button" className="font-medium underline" onClick={() => setChatOpen(true)}>
-              Talk to the agent
-            </button>{" "}
-            to update this list and the scores.
+            Starter homes are on the map. Set must-haves in{" "}
+            <button type="button" className="font-medium underline" onClick={openChat}>
+              Chat
+            </button>
+            {chatOpen ? "." : " — use the Chat button on the map."}
             {progressLine ? <span className="mt-0.5 block text-xs text-[var(--muted)]">{progressLine}</span> : null}
           </p>
           <button
@@ -399,16 +415,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
         <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">{resultsHeadline(rows.length, totalMatched)}</p>
-        <div className="flex items-center gap-2">
-          {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
-          <button
-            type="button"
-            className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm"
-            onClick={() => setChatOpen(true)}
-          >
-            Chat
-          </button>
-        </div>
+        {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
       </div>
       {job?.tone === "err" ? (
         <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">{job.text}</p>
@@ -424,7 +431,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             layoutTick={chatOpen ? "chat" : "map"}
           />
           {chatOpen ? null : (
-            <ChatFab className="absolute bottom-4 right-4 z-20" onClick={() => setChatOpen(true)} />
+            <ChatFab
+              className="absolute bottom-4 right-4 z-20"
+              nudge={showBanner || needListHint}
+              onClick={openChat}
+            />
           )}
         </div>
         <div className="min-h-0 flex-1 basis-0 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain p-3 md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 xl:w-[26rem]">
@@ -440,14 +451,14 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           {rows.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">
               {needListHint
-                ? "No matching homes on the sample list. Open chat → Actions to upload a Redfin Favorites CSV or use a live search."
-                : "Loading sample homes… If nothing appears, open chat and set your must-haves."}
+                ? "No matching homes on the sample list. Use Chat to upload a Redfin Favorites CSV or run a live search."
+                : "Loading sample homes… If nothing appears, use Chat to set your must-haves."}
             </p>
           ) : null}
         </div>
       </div>
 
-      <ChatSheet open={chatOpen} onClose={() => setChatOpen(false)} onKeyboard={setKeyboardOpen}>
+      <ChatSheet open={chatOpen} onClose={closeChat} onKeyboard={setKeyboardOpen}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <ChatPanel
           matrix={matrix}
@@ -456,7 +467,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           scoreProgress={scoreProgress}
           actionNotice={actionNotice}
           onChatEvent={onChatEvent}
-          onClose={() => setChatOpen(false)}
+          onClose={closeChat}
           extra={
             keyboardOpen ? null : (
               <div className="max-h-[min(10rem,28svh)] shrink-0 overflow-y-auto overscroll-contain border-t border-[var(--line)]">

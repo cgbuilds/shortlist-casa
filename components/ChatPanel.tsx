@@ -5,7 +5,8 @@ import type { ChatMessage, UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
 import { wantsRescore, looksLikeCriteria } from "@/lib/chat-intent";
 
-const CHAT_STORAGE_KEY = "homestead-chat-messages";
+export const CHAT_STORAGE_KEY = "homestead-chat-messages";
+export const CHAT_DISMISSED_KEY = "homestead-chat-dismissed";
 
 const DEFAULT_MESSAGES: ChatMessage[] = [
   {
@@ -14,6 +15,26 @@ const DEFAULT_MESSAGES: ChatMessage[] = [
       "You’re looking at a sample Tampa list (3 bed, 2 bath, single-family). Tell me your must-haves — area, beds, budget, type. If those sample homes don’t fit, they come off the map and you’ll upload a Redfin Favorites CSV or run a live search.",
   },
 ];
+
+function abortAfter(ms: number) {
+  const ac = new AbortController();
+  const id = window.setTimeout(() => ac.abort(), ms);
+  return {
+    signal: ac.signal,
+    clear: () => window.clearTimeout(id),
+  };
+}
+
+function chatFailMessage(err: unknown, status?: number) {
+  const name = err instanceof DOMException ? err.name : "";
+  const raw = err instanceof Error ? err.message : "";
+  if (name === "AbortError" || name === "TimeoutError" || /aborted|timeout/i.test(raw)) {
+    return "The coach took too long. Send that again and I’ll try once more.";
+  }
+  if (status === 401) return "Your session expired. Refresh the page, then send that again.";
+  if (status && status >= 500) return "Chat hit a server snag. Send that again in a moment.";
+  return "Couldn’t reach chat just then. Send that again.";
+}
 
 function emitChatLog(event: string, detail: Record<string, unknown>) {
   const payload = { t: new Date().toISOString(), event, ...detail };
@@ -88,21 +109,16 @@ export function ChatPanel({
     }
   }, [messages, hydrated]);
 
-  async function send() {
-    const next = text.trim();
-    if (!next || pending) return;
-    setText("");
-    const history = [...messages, { role: "user" as const, content: next }];
-    setMessages(history);
-    setPending(true);
-    setError(null);
-    emitChatLog("request", { chars: next.length });
+  const lastFailed = useRef<string | null>(null);
+
+  async function postChat(text: string, history: ChatMessage[]) {
+    const gate = abortAfter(20_000);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messages.slice(-12), text: next, draft: matrix }),
-        signal: AbortSignal.timeout(55_000),
+        body: JSON.stringify({ messages: history.slice(-12), text, draft: matrix }),
+        signal: gate.signal,
       });
       const raw = await res.text();
       let data: {
@@ -124,8 +140,47 @@ export function ChatPanel({
       try {
         data = JSON.parse(raw) as typeof data;
       } catch {
-        throw new Error(res.status === 504 || res.status === 524 ? "Chat timed out. Try again." : `Chat failed (${res.status}).`);
+        throw new Error(res.status === 504 || res.status === 524 ? "timeout" : `Chat failed (${res.status}).`);
       }
+      if (!res.ok && !data.reply) {
+        throw Object.assign(new Error(data.error || `Chat failed (${res.status})`), { status: res.status });
+      }
+      return { res, data };
+    } finally {
+      gate.clear();
+    }
+  }
+
+  async function send(preset?: string) {
+    const next = (preset ?? text).trim();
+    if (!next || pending) return;
+    lastFailed.current = next;
+    setText("");
+    const last = messages[messages.length - 1];
+    const alreadyInThread = last?.role === "user" && last.content === next;
+    const prior = alreadyInThread ? messages.slice(0, -1) : messages;
+    const history = alreadyInThread ? messages : [...messages, { role: "user" as const, content: next }];
+    if (!alreadyInThread) setMessages(history);
+    setPending(true);
+    setError(null);
+    emitChatLog("request", { chars: next.length });
+    try {
+      let result: Awaited<ReturnType<typeof postChat>> | undefined;
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          result = await postChat(next, prior);
+          lastErr = undefined;
+          break;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (!result) {
+        const status = lastErr && typeof lastErr === "object" && "status" in lastErr ? Number(lastErr.status) : undefined;
+        throw Object.assign(lastErr instanceof Error ? lastErr : new Error("network error"), { status });
+      }
+      const { res, data } = result;
       emitChatLog("response", {
         ok: res.ok,
         provider: data.provider,
@@ -139,7 +194,10 @@ export function ChatPanel({
         liveSearch: Boolean(data.liveSearch),
         error: data.error ?? null,
       });
-      if (data.error) setError(data.error);
+      if (data.error && !data.reply) {
+        throw Object.assign(new Error(data.error), { status: res.status });
+      }
+      lastFailed.current = null;
       const reply = data.reply ?? "Updated.";
       setMessages([...history, { role: "assistant", content: reply }]);
       if (data.commit) setCommitted(true);
@@ -167,9 +225,10 @@ export function ChatPanel({
         }
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "network error";
+      const status = err && typeof err === "object" && "status" in err ? Number((err as { status?: number }).status) : undefined;
+      const message = chatFailMessage(err, status);
       emitChatLog("error", { message });
-      setError(`Request failed: ${message}`);
+      setError(message);
     } finally {
       setPending(false);
     }
@@ -212,7 +271,16 @@ export function ChatPanel({
           </div>
         ))}
         {pending ? <ChatStatus /> : null}
-        {error && !pending ? <p className="text-xs text-[var(--muted)]">{error}</p> : null}
+        {error && !pending ? (
+          <p className="text-sm text-[var(--muted)]">
+            {error}{" "}
+            {lastFailed.current ? (
+              <button type="button" className="font-medium text-[var(--accent)] underline" onClick={() => void send(lastFailed.current ?? undefined)}>
+                Try again
+              </button>
+            ) : null}
+          </p>
+        ) : null}
         {committed ? (
           <p className="text-xs text-[var(--accent)]">
             Must-haves saved. The map and list will rescore.

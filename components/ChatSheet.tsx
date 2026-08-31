@@ -97,18 +97,27 @@ export function ChatSheet({
   );
 }
 
-export function ChatFab({ onClick, className = "" }: { onClick: () => void; className?: string }) {
+export function ChatFab({
+  onClick,
+  className = "",
+  nudge = false,
+}: {
+  onClick: () => void;
+  className?: string;
+  nudge?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label="Open chat"
       title="Chat"
-      className={`flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg hover:opacity-95 ${className}`}
+      className={`inline-flex h-12 items-center gap-2 rounded-full bg-[var(--accent)] px-4 text-sm font-medium text-white shadow-lg hover:opacity-95 ${nudge ? "chat-nudge" : ""} ${className}`}
     >
-      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
         <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" strokeLinejoin="round" />
       </svg>
+      Chat
     </button>
   );
 }
