@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
-import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_USED_KEY, LEGACY_CHAT_DISMISSED_KEY } from "@/components/ChatPanel";
+import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_USED_KEY } from "@/components/ChatPanel";
 import { ChatFab, ChatSheet } from "@/components/ChatSheet";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
@@ -53,7 +53,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [cacheCount, setCacheCount] = useState(0);
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [showBanner, setShowBanner] = useState(true);
   const [regrading, setRegrading] = useState(false);
   const [scoreProgress, setScoreProgress] = useState<Pick<RankProgress, "analyzed" | "total" | "processing"> | null>(
@@ -97,18 +97,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       if (window.sessionStorage.getItem(CHAT_USED_KEY) === "1") setChatUsed(true);
       const welcome = new URLSearchParams(window.location.search).get("welcome");
       if (welcome === "1") {
-        setChatOpen(true);
         window.history.replaceState({}, "", "/app");
-      } else if (
-        window.sessionStorage.getItem(CHAT_DISMISSED_KEY) === "1" ||
-        window.sessionStorage.getItem(LEGACY_CHAT_DISMISSED_KEY) === "1"
-      ) {
-        setChatOpen(false);
-      } else {
-        setChatOpen(true);
       }
+      setChatOpen(false);
     } catch {
-      setChatOpen(true);
+      setChatOpen(false);
     }
     const html = document.documentElement;
     const body = document.body;

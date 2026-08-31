@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 function pinToVisualViewport(el: HTMLElement) {
   const vv = window.visualViewport;
-  const width = Math.max(vv?.width || 0, window.innerWidth || 0, 320);
-  const height = Math.max(vv?.height || 0, window.innerHeight || 0, 480);
-  el.style.top = `${vv?.offsetTop ?? 0}px`;
-  el.style.left = `${vv?.offsetLeft ?? 0}px`;
+  const width = Math.max(1, Math.round(vv?.width || window.innerWidth || 320));
+  // Never size to layout innerHeight — on iPhone that includes the area behind the keyboard.
+  const height = Math.max(1, Math.round(vv?.height || window.innerHeight || 320));
+  el.style.position = "fixed";
+  el.style.top = `${Math.round(vv?.offsetTop ?? 0)}px`;
+  el.style.left = `${Math.round(vv?.offsetLeft ?? 0)}px`;
   el.style.width = `${width}px`;
   el.style.height = `${height}px`;
   el.style.right = "auto";
@@ -27,6 +29,7 @@ export function ChatSheet({
 }) {
   const overlay = useRef<HTMLDivElement>(null);
   const openedAt = useRef(0);
+  const [keyboard, setKeyboard] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +43,7 @@ export function ChatSheet({
 
   useEffect(() => {
     if (!open) {
+      setKeyboard(false);
       onKeyboard?.(false);
       return;
     }
@@ -49,20 +53,25 @@ export function ChatSheet({
       window.scrollTo(0, 0);
       pinToVisualViewport(el);
       const vv = window.visualViewport;
-      const keyboard = Boolean(vv && window.innerHeight - vv.height > 80);
-      onKeyboard?.(keyboard);
+      const openKb = Boolean(vv && (window.innerHeight - vv.height > 80 || vv.offsetTop > 20));
+      setKeyboard(openKb);
+      onKeyboard?.(openKb);
     };
     apply();
     const id = window.setTimeout(apply, 50);
+    const later = window.setTimeout(apply, 300);
     const vv = window.visualViewport;
     vv?.addEventListener("resize", apply);
     vv?.addEventListener("scroll", apply);
     window.addEventListener("scroll", apply, { passive: true });
+    window.addEventListener("resize", apply);
     return () => {
       window.clearTimeout(id);
+      window.clearTimeout(later);
       vv?.removeEventListener("resize", apply);
       vv?.removeEventListener("scroll", apply);
       window.removeEventListener("scroll", apply);
+      window.removeEventListener("resize", apply);
     };
   }, [open, onKeyboard]);
 
@@ -74,11 +83,7 @@ export function ChatSheet({
   }
 
   return (
-    <div
-      ref={overlay}
-      className="fixed z-[2000] flex items-end overflow-hidden sm:items-center sm:justify-end sm:p-6"
-      style={{ inset: 0 }}
-    >
+    <div ref={overlay} className="fixed z-[2000] flex items-end overflow-hidden sm:items-center sm:justify-end sm:p-6">
       <button
         type="button"
         className="absolute inset-0 bg-[color-mix(in_oklab,var(--ink)_35%,transparent)]"
@@ -89,7 +94,9 @@ export function ChatSheet({
         role="dialog"
         aria-label="Tell Chat your must-haves"
         aria-modal="true"
-        className="relative z-10 flex h-[min(92dvh,100%)] max-h-[min(92dvh,100%)] w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-[var(--paper-2)] pt-[env(safe-area-inset-top)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:pt-0"
+        className={`relative z-10 flex w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-[var(--paper-2)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:pt-0 ${
+          keyboard ? "h-full max-h-full pt-0" : "h-[92%] max-h-full pt-[env(safe-area-inset-top)]"
+        }`}
       >
         <div className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
           <p className="text-base font-medium">Tell Chat your must-haves</p>

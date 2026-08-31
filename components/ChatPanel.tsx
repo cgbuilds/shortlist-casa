@@ -322,7 +322,8 @@ export function ChatPanel({
       </div>
       {extra}
       <form
-        className="relative z-20 shrink-0 border-t border-[var(--line)] bg-[var(--paper-2)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        className="relative z-20 shrink-0 border-t border-[var(--line)] bg-[var(--paper-2)] p-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        autoComplete="off"
         suppressHydrationWarning
         onSubmit={(e) => {
           e.preventDefault();
@@ -331,10 +332,24 @@ export function ChatPanel({
       >
         <textarea
           value={text}
+          name="mustHaveNote"
+          autoComplete="off"
+          autoCorrect="on"
+          autoCapitalize="sentences"
+          spellCheck
+          enterKeyHint="send"
+          inputMode="text"
           suppressHydrationWarning
           onChange={(e) => setText(e.target.value)}
-          onFocus={() => {
+          onFocus={(e) => {
             window.scrollTo(0, 0);
+            const node = e.currentTarget;
+            window.setTimeout(() => {
+              node.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }, 50);
+            window.setTimeout(() => {
+              node.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }, 350);
           }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
@@ -342,7 +357,7 @@ export function ChatPanel({
             e.preventDefault();
             if (!pending) void send();
           }}
-          placeholder="Tampa, FL · 3 bed · 2 bath · SFR. Enter to send · Shift+Enter for a new line"
+          placeholder="Area, beds, budget, home type…"
           rows={2}
           className={`w-full rounded-xl border bg-[var(--paper)] px-3 py-2 text-base ${
             inviting ? "chat-composer-pulse border-[var(--accent)]" : "border-[var(--line)]"
