@@ -317,6 +317,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           scoreProgress={scoreProgress}
           actionNotice={actionNotice}
           onChatEvent={onChatEvent}
+          onClose={() => setChatOpen(false)}
         />
         </div>
         <div className="max-h-[min(12rem,32svh)] shrink-0 overflow-y-auto overscroll-contain border-t border-[var(--line)]">

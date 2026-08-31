@@ -39,6 +39,7 @@ export function ChatPanel({
   userLimit = 3,
   scoreProgress,
   actionNotice,
+  onClose,
 }: {
   matrix: UserMatrix;
   onChatEvent: (event: {
@@ -51,6 +52,7 @@ export function ChatPanel({
   userLimit?: number;
   scoreProgress?: { analyzed: number; total: number; processing: number } | null;
   actionNotice?: { id: number; text: string } | null;
+  onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
   const [hydrated, setHydrated] = useState(false);
@@ -183,7 +185,7 @@ export function ChatPanel({
         ) : null}
       </div>
       <form
-        className="flex gap-2 border-t border-[var(--line)] p-3"
+        className="shrink-0 border-t border-[var(--line)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         suppressHydrationWarning
         onSubmit={(e) => {
           e.preventDefault();
@@ -194,6 +196,9 @@ export function ChatPanel({
           value={text}
           suppressHydrationWarning
           onChange={(e) => setText(e.target.value)}
+          onFocus={() => {
+            window.scrollTo(0, 0);
+          }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
             if (e.key !== "Enter" || e.shiftKey) return;
@@ -202,11 +207,26 @@ export function ChatPanel({
           }}
           placeholder="Tampa, FL · 3 bed · 2 bath · SFR. Enter to send · Shift+Enter for a new line"
           rows={2}
-          className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-base"
         />
-        <button className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm text-white disabled:opacity-50" type="submit" disabled={pending}>
-          {pending ? "On it…" : "Send"}
-        </button>
+        <div className="mt-2 flex gap-2">
+          {onClose ? (
+            <button
+              type="button"
+              className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-[var(--line)] px-4 text-base sm:hidden"
+              onClick={onClose}
+            >
+              Done
+            </button>
+          ) : null}
+          <button
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[var(--accent)] px-4 text-base text-white disabled:opacity-50"
+            type="submit"
+            disabled={pending}
+          >
+            {pending ? "On it…" : "Send"}
+          </button>
+        </div>
       </form>
     </div>
   );
