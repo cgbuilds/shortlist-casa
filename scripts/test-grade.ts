@@ -15,7 +15,7 @@ import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiv
 import { outboundListingLinks } from "../lib/outbound-links";
 import { starterMatrix } from "../lib/starter-profile";
 import { wantsRescore } from "../lib/chat-intent";
-import { sanitizeListings } from "../lib/listings-payload";
+import { sanitizeListings, parseStoredSession } from "../lib/listings-payload";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -333,6 +333,8 @@ async function main() {
   assert(!wantsRescore("pull live listings in Tampa"), "live pull is not a rescore ask");
   assert(sanitizeListings([{ id: "a", address: "1 Main" }]).length === 1, "keeps a valid listing");
   assert(sanitizeListings([{ address: "no id" }, null, "x"]).length === 0, "drops invalid listings");
+  const parsedPool = parseStoredSession(JSON.stringify({ listings: [{ id: "h1", address: "9 Oak" }], savedAt: 1 }));
+  assert(parsedPool.listings[0]?.id === "h1", "session JSON restores listings");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,

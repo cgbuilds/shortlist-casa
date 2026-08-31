@@ -13,7 +13,7 @@ import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
 import { postSearch, type SearchResponse } from "@/lib/search-client";
 import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
-import { readStoredPool, writeStoredPool } from "@/lib/listings-payload";
+import { readStoredPool, readStoredSession, writeStoredPool, writeStoredMatrix } from "@/lib/listings-payload";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -67,10 +67,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const scoreGen = useRef(0);
   const leftStarter = useRef(false);
   const poolRef = useRef<PropertyListing[]>([]);
+  const matrixRef = useRef(matrix);
+  matrixRef.current = matrix;
 
   useEffect(() => {
     if (window.sessionStorage.getItem(BANNER_KEY) === "1") setShowBanner(false);
-    poolRef.current = readStoredPool();
     const html = document.documentElement;
     const body = document.body;
     const prevHtml = html.style.overflow;
@@ -93,6 +94,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   const persistMatrix = (m: UserMatrix) => {
     setMatrix(m);
+    writeStoredMatrix(m);
     void fetch("/api/matrix", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -125,6 +127,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (Array.isArray(data.listings) && data.listings.length && !opts?.partial) {
       poolRef.current = data.listings;
       writeStoredPool(data.listings);
+      writeStoredMatrix(matrixRef.current);
     }
     if (Array.isArray(data.results)) {
       if (opts?.partial && data.results.length === 0) return;
@@ -137,6 +140,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         if (!opts?.partial && !data.listings?.length && top.length) {
           poolRef.current = top.map((r) => r.listing);
           writeStoredPool(poolRef.current);
+          writeStoredMatrix(matrixRef.current);
         }
         if (src === "rentcast" || src === "cache" || src === "upload" || src === "saved" || src === "live") {
           leftStarter.current = true;
@@ -190,7 +194,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   async function refreshGrades(m?: UserMatrix) {
     const listings = poolRef.current.length ? poolRef.current : readStoredPool();
-    return runScoring({ source: "regrade", draft: m ?? matrix, listings });
+    if (listings.length) poolRef.current = listings;
+    return runScoring({ source: "regrade", draft: m ?? matrixRef.current, listings });
   }
 
   async function runLive(m: UserMatrix, force: boolean) {
@@ -212,7 +217,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     liveSearch?: boolean;
     rescore?: boolean;
   }) {
-    const draft = event.matrix ?? matrix;
+    const draft = event.matrix ?? matrixRef.current;
     if (event.matrix) persistMatrix(event.matrix);
     if (event.livePull) return confirmScoring("live", await runLive(draft, true));
     if (event.liveSearch) return confirmScoring("cache", await runLive(draft, false));
@@ -246,16 +251,32 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       })
       .catch(() => undefined);
 
+    const stored = readStoredSession();
+    if (stored.listings.length) {
+      poolRef.current = stored.listings;
+      leftStarter.current = true;
+    }
+    const draft = stored.matrix?.searchArea?.trim() ? stored.matrix : matrix;
+    if (stored.matrix?.searchArea?.trim()) {
+      matrixRef.current = stored.matrix;
+      persistMatrix(stored.matrix);
+    }
+
     void (async () => {
       try {
-        const data = await refreshGrades();
+        const data = await runScoring({
+          source: "regrade",
+          draft,
+          listings: poolRef.current,
+        });
         if (data === undefined) return;
         if (data?.results?.length) return;
+        if (poolRef.current.length) return;
       } catch {
-        /* no saved list yet */
+        if (poolRef.current.length) return;
       }
       try {
-        await runScoring({ source: "favorites", draft: matrix });
+        await runScoring({ source: "favorites", draft });
       } catch (err) {
         setJob({
           tone: "err",

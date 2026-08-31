@@ -1,6 +1,14 @@
-import type { PropertyListing } from "@/lib/types";
+import type { PropertyListing, UserMatrix } from "@/lib/types";
 
 const MAX_RECALL = 80;
+export const LISTING_POOL_KEY = "homestead-listing-pool";
+export const SESSION_KEY = "homestead-session-v1";
+
+export type HomesteadSession = {
+  listings: PropertyListing[];
+  matrix?: UserMatrix;
+  savedAt: number;
+};
 
 export function sanitizeListings(raw: unknown): PropertyListing[] {
   if (!Array.isArray(raw)) return [];
@@ -18,24 +26,87 @@ export function sanitizeListings(raw: unknown): PropertyListing[] {
   return out;
 }
 
-export const LISTING_POOL_KEY = "homestead-listing-pool";
+function looksLikeMatrix(raw: unknown): raw is UserMatrix {
+  if (!raw || typeof raw !== "object") return false;
+  const m = raw as UserMatrix;
+  return typeof m.searchArea === "string" && typeof m.catalogVersion === "string" && Boolean(m.dimensions);
+}
 
-export function readStoredPool(): PropertyListing[] {
+export function parseStoredSession(raw: string | null): HomesteadSession {
+  if (!raw) return { listings: [], savedAt: 0 };
   try {
-    const raw = window.sessionStorage.getItem(LISTING_POOL_KEY);
-    if (!raw) return [];
-    return sanitizeListings(JSON.parse(raw));
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return { listings: sanitizeListings(parsed), savedAt: 0 };
+    }
+    if (parsed && typeof parsed === "object") {
+      const row = parsed as { listings?: unknown; matrix?: unknown; savedAt?: unknown };
+      return {
+        listings: sanitizeListings(row.listings),
+        matrix: looksLikeMatrix(row.matrix) ? row.matrix : undefined,
+        savedAt: typeof row.savedAt === "number" ? row.savedAt : 0,
+      };
+    }
   } catch {
-    return [];
+    /* ignore */
+  }
+  return { listings: [], savedAt: 0 };
+}
+
+function readStore(store: Storage | undefined, key: string): string | null {
+  if (!store) return null;
+  try {
+    return store.getItem(key);
+  } catch {
+    return null;
   }
 }
 
-export function writeStoredPool(listings: PropertyListing[]) {
+function writeStore(store: Storage | undefined, key: string, value: string) {
+  if (!store) return false;
   try {
-    const clean = sanitizeListings(listings);
-    if (!clean.length) return;
-    window.sessionStorage.setItem(LISTING_POOL_KEY, JSON.stringify(clean));
+    store.setItem(key, value);
+    return true;
   } catch {
-    /* quota / private mode */
+    return false;
   }
+}
+
+export function readStoredSession(): HomesteadSession {
+  if (typeof window === "undefined") return { listings: [], savedAt: 0 };
+  const fromSession = parseStoredSession(readStore(window.localStorage, SESSION_KEY));
+  if (fromSession.listings.length || fromSession.matrix) return fromSession;
+  const fromLocalLegacy = parseStoredSession(readStore(window.localStorage, LISTING_POOL_KEY));
+  if (fromLocalLegacy.listings.length) return fromLocalLegacy;
+  return parseStoredSession(readStore(window.sessionStorage, LISTING_POOL_KEY));
+}
+
+export function readStoredPool(): PropertyListing[] {
+  return readStoredSession().listings;
+}
+
+export function writeStoredSession(patch: { listings?: PropertyListing[]; matrix?: UserMatrix }) {
+  if (typeof window === "undefined") return;
+  const prev = readStoredSession();
+  const listings = patch.listings ? sanitizeListings(patch.listings) : prev.listings;
+  const matrix = patch.matrix ?? prev.matrix;
+  if (!listings.length && !matrix) return;
+  const payload = JSON.stringify({ listings, matrix, savedAt: Date.now() } satisfies HomesteadSession);
+  if (!writeStore(window.localStorage, SESSION_KEY, payload)) {
+    const slim = JSON.stringify({
+      listings: listings.slice(0, 25),
+      matrix,
+      savedAt: Date.now(),
+    } satisfies HomesteadSession);
+    writeStore(window.localStorage, SESSION_KEY, slim);
+  }
+  writeStore(window.sessionStorage, SESSION_KEY, payload);
+}
+
+export function writeStoredPool(listings: PropertyListing[]) {
+  writeStoredSession({ listings });
+}
+
+export function writeStoredMatrix(matrix: UserMatrix) {
+  writeStoredSession({ matrix });
 }
