@@ -14,8 +14,9 @@ import { rankListings, resultsHeadline, scoreStatusLabel } from "../lib/rank-lis
 import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiveSearch, quotaLimits, getLiveQuota, resetLiveQuotaForTests, setLiveQuotaForTests, reserveRentcastCall, RENTCAST_HARD_CAP, filterListingsByQuery, grantCourtesySearch, isPoliteExtraSearchAsk } from "../lib/listing-cache";
 import { outboundListingLinks } from "../lib/outbound-links";
 import { starterMatrix } from "../lib/starter-profile";
-import { wantsRescore } from "../lib/chat-intent";
+import { wantsRescore, looksLikeCriteria } from "../lib/chat-intent";
 import { sanitizeListings, parseStoredSession } from "../lib/listings-payload";
+import { sampleListingFits } from "../lib/sample-fit";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -337,6 +338,12 @@ async function main() {
   assert(parsedPool.listings[0]?.id === "h1", "session JSON restores listings");
   const awaiting = parseStoredSession(JSON.stringify({ listings: [], matrix: starterMatrix(), awaitingSearch: true, savedAt: 2 }));
   assert(awaiting.awaitingSearch === true, "awaitingSearch flag restores");
+  assert(looksLikeCriteria("Orlando, FL 4 bed"), "criteria text is detected");
+  const valrico = favorites.find((l) => l.city === "Valrico")!;
+  const orlando = starterMatrix();
+  orlando.searchArea = "Orlando, FL";
+  assert(!sampleListingFits(valrico, orlando), "Tampa-sample home is hidden after Orlando criteria");
+  assert(sampleListingFits(valrico, starterMatrix()), "Tampa-sample home stays for Tampa starter profile");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,

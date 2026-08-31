@@ -13,6 +13,7 @@ import { defaultMatrix } from "@/kb/catalog";
 import { takeTopListings } from "@/lib/grade";
 import { postSearch, type SearchResponse } from "@/lib/search-client";
 import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
+import { sampleListingFits } from "@/lib/sample-fit";
 import { readStoredPool, readStoredSession, writeStoredPool, writeStoredMatrix, writeStoredSession } from "@/lib/listings-payload";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
@@ -23,11 +24,10 @@ const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m
 type Row = { listing: PropertyListing; grade: GradeResult };
 const BANNER_KEY = "homestead-starter-banner-dismissed";
 
-function isOwnListSource(source: string, filename?: string) {
-  if (source === "rentcast" || source === "live" || source === "upload" || source === "cache") return true;
-  if (source === "saved" && filename && filename !== "starter-tampa.csv" && !filename.startsWith("starter-")) {
-    return true;
-  }
+function isOwnListSource(source: string, filename?: string, pulled?: boolean) {
+  if (source === "rentcast" || source === "upload") return true;
+  if (source === "live" && pulled) return true;
+  if (source === "saved" && filename && !/starter/i.test(filename) && filename !== "live-search.json") return true;
   return false;
 }
 
@@ -127,6 +127,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     notice?: string;
     error?: string;
     source?: string;
+    pulled?: boolean;
     quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
     cache?: { count: number };
     saved?: { filename: string; count: number } | null;
@@ -136,7 +137,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (leftStarter.current && !opts?.allowStarter && (src === "redfin-favorites" || src === "favorites")) {
       return;
     }
-    if (isOwnListSource(src, data.saved?.filename)) {
+    if (isOwnListSource(src, data.saved?.filename, data.pulled)) {
       starterOnly.current = false;
       setHasOwnList(true);
       setNeedListHint(false);
@@ -152,7 +153,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       if (data.results.length || !data.error) {
         let top = takeTopListings(data.results);
         if (starterOnly.current && criteriaSent.current) {
-          top = top.filter((row) => !row.grade.mustHaveFailed);
+          top = top.filter((row) => sampleListingFits(row.listing, matrixRef.current, row.grade));
           setNeedListHint(true);
           writeStoredSession({ awaitingSearch: true, hasOwnList: false, listings: top.map((r) => r.listing) });
         }
@@ -170,7 +171,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           poolRef.current = [];
           writeStoredPool([]);
         }
-        if (src === "rentcast" || src === "cache" || src === "upload" || src === "saved" || src === "live") {
+        if (src === "rentcast" || src === "upload" || src === "live") {
           leftStarter.current = true;
         }
       }
@@ -262,7 +263,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     if (event.rescore || event.matrix) {
       const data = await refreshGrades(draft);
       if (starterOnly.current) {
-        const shown = (data?.results ?? []).filter((r) => !r.grade.mustHaveFailed);
+        const shown = (data?.results ?? []).filter((r) =>
+          sampleListingFits(r.listing, draft, r.grade)
+        );
         if (!shown.length) {
           return "None of the sample homes fit those must-haves. Upload a Redfin Favorites CSV (Actions) or confirm a live search to load a matching list.";
         }
@@ -304,11 +307,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       poolRef.current = stored.listings;
       leftStarter.current = true;
     }
-    if (stored.hasOwnList) {
-      starterOnly.current = false;
-      setHasOwnList(true);
-    }
-    if (stored.awaitingSearch && !stored.hasOwnList) {
+    if (stored.awaitingSearch) {
       criteriaSent.current = true;
       starterOnly.current = true;
       setNeedListHint(true);

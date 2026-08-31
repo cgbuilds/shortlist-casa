@@ -18,7 +18,6 @@ import {
   listingsFromCache,
   livePullNotice,
   markFetched,
-  rememberLivePull,
   withUserQueue,
   RENTCAST_CAP_MESSAGE,
 } from "@/lib/listing-cache";
@@ -310,10 +309,6 @@ export async function POST(request: Request) {
       );
     }
     const query = queryFromMatrix(matrix);
-    if (fromClient.length) {
-      rememberLivePull(user.id, query, fromClient);
-      adoptLiveListings(user, fromClient);
-    }
     const scoped = fromClient.length ? fromClient : liveList?.length ? listings : filterList(listings, body);
     const working = fromClient.length ? fromClient : filterListingsByQuery(scoped, query);
     return respondRanked(body.stream, working, matrix, async (ranked) => {

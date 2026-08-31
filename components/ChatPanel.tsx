@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
-import { wantsRescore } from "@/lib/chat-intent";
+import { wantsRescore, looksLikeCriteria } from "@/lib/chat-intent";
 
 const CHAT_STORAGE_KEY = "homestead-chat-messages";
 
@@ -144,7 +144,8 @@ export function ChatPanel({
       setMessages([...history, { role: "assistant", content: reply }]);
       if (data.commit) setCommitted(true);
       setPending(false);
-      const rescore = Boolean(data.rescore) || Boolean(data.matrixChanged) || wantsRescore(next);
+      const rescore =
+        Boolean(data.rescore) || Boolean(data.matrixChanged) || wantsRescore(next) || looksLikeCriteria(next);
       const shouldAct = Boolean(data.livePull || data.liveSearch || rescore);
       if (shouldAct) {
         try {
