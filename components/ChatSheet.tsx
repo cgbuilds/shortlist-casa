@@ -76,7 +76,7 @@ export function ChatSheet({
   return (
     <div
       ref={overlay}
-      className="fixed z-50 flex items-end overflow-hidden sm:items-center sm:justify-end sm:p-6"
+      className="fixed z-[2000] flex items-end overflow-hidden sm:items-center sm:justify-end sm:p-6"
       style={{ inset: 0 }}
     >
       <button
