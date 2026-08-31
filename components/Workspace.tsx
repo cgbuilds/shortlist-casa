@@ -56,8 +56,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [remaining, setRemaining] = useState<number | undefined>(undefined);
   const [userLimit, setUserLimit] = useState(3);
   const [globalRemaining, setGlobalRemaining] = useState<number | undefined>(undefined);
-  const [globalUsed, setGlobalUsed] = useState<number | undefined>(undefined);
-  const [globalLimit, setGlobalLimit] = useState(50);
   const [cacheCount, setCacheCount] = useState(0);
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
@@ -128,7 +126,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     error?: string;
     source?: string;
     pulled?: boolean;
-    quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
+    quota?: { remaining: number; userLimit: number; globalRemaining?: number };
     cache?: { count: number };
     saved?: { filename: string; count: number } | null;
   }, gen = scoreGen.current, opts?: { partial?: boolean; allowStarter?: boolean }) => {
@@ -180,8 +178,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       setRemaining(data.quota.remaining);
       setUserLimit(data.quota.userLimit);
       if (data.quota.globalRemaining != null) setGlobalRemaining(data.quota.globalRemaining);
-      if (data.quota.globalUsed != null) setGlobalUsed(data.quota.globalUsed);
-      if (data.quota.globalLimit != null) setGlobalLimit(data.quota.globalLimit);
     }
     if (data.cache?.count != null) setCacheCount(data.cache.count);
     applySaved(data.saved);
@@ -281,7 +277,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       .then((data: {
         liveSearch?: boolean;
         signupUrl?: string;
-        quota?: { remaining: number; userLimit: number; globalRemaining?: number; globalUsed?: number; globalLimit?: number };
+        quota?: { remaining: number; userLimit: number; globalRemaining?: number };
         cache?: { count: number };
         saved?: { filename: string; count: number } | null;
       }) => {
@@ -291,8 +287,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           setRemaining(data.quota.remaining);
           setUserLimit(data.quota.userLimit);
           if (data.quota.globalRemaining != null) setGlobalRemaining(data.quota.globalRemaining);
-          if (data.quota.globalUsed != null) setGlobalUsed(data.quota.globalUsed);
-          if (data.quota.globalLimit != null) setGlobalLimit(data.quota.globalLimit);
         }
         if (data.cache?.count != null) setCacheCount(data.cache.count);
         if (data.saved) {
@@ -466,8 +460,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
                   remaining={remaining}
                   userLimit={userLimit}
                   globalRemaining={globalRemaining}
-                  globalUsed={globalUsed}
-                  globalLimit={globalLimit}
                   cacheCount={cacheCount}
                   savedFilename={savedFilename}
                   savedCount={savedCount}

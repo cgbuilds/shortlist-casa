@@ -16,8 +16,6 @@ export type GradePayload = {
     remaining: number;
     userLimit: number;
     globalRemaining?: number;
-    globalUsed?: number;
-    globalLimit?: number;
   };
   fromCache?: boolean;
   pulled?: boolean;
@@ -36,8 +34,6 @@ export function RedfinUpload({
   remaining,
   userLimit,
   globalRemaining,
-  globalUsed,
-  globalLimit,
   cacheCount,
   savedFilename,
   savedCount,
@@ -53,8 +49,6 @@ export function RedfinUpload({
   remaining?: number;
   userLimit?: number;
   globalRemaining?: number;
-  globalUsed?: number;
-  globalLimit?: number;
   cacheCount?: number;
   savedFilename?: string;
   savedCount?: number;
@@ -95,10 +89,7 @@ export function RedfinUpload({
   const pullsLeft = remaining ?? userLimit ?? 3;
   const limit = userLimit ?? 3;
   const used = Math.max(0, limit - pullsLeft);
-  const accountLeft = globalRemaining ?? globalLimit ?? 50;
-  const accountLimit = globalLimit ?? 50;
-  const accountUsed = globalUsed ?? Math.max(0, accountLimit - accountLeft);
-  const canSpendPull = pullsLeft > 0 && accountLeft > 0;
+  const canSpendPull = pullsLeft > 0 && (globalRemaining == null || globalRemaining > 0);
 
   return (
     <section
@@ -149,13 +140,13 @@ export function RedfinUpload({
       ) : null}
       {liveSearch ? (
         <Fold title={`Live searches · ${used}/${limit} used`}>
-          {pullsLeft} left this month. Account {accountUsed}/{accountLimit} (hard stop at 50 — no $0.20 overage).
-          Cache stays until you confirm another pull or widen area/type/beds/price ({cacheCount ?? 0} cached).
-          Coffee, vibe, and drainage never spend a pull. Ask chat before using another live search.
+          {pullsLeft} left this month. Cache stays until you confirm another pull or widen
+          area/type/beds/price ({cacheCount ?? 0} cached). Coffee, vibe, and drainage never spend a
+          pull. Ask chat before using another live search.
         </Fold>
       ) : signupUrl ? (
         <Fold title="Live search setup">
-          Fastest live path: free RentCast key (50 pulls/month) from{" "}
+          Fastest live path: free RentCast key from{" "}
           <a href={signupUrl} target="_blank" rel="noreferrer" className="underline">
             rentcast.io/api
           </a>

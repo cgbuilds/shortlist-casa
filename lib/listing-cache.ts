@@ -9,7 +9,7 @@ export const LIVE_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
 /** RentCast Developer plan included requests. Never send a call that would overage. */
 export const RENTCAST_HARD_CAP = 50;
 export const RENTCAST_CAP_MESSAGE =
-  "RentCast monthly cap of 50 API requests reached. This app will not send overage calls ($0.20 each). Ask chat to rescore the cache, upload a Redfin CSV, or wait until next month.";
+  "Live search is unavailable right now. Ask chat to rescore the cache, upload a Redfin CSV, or wait until next month.";
 
 export type LiveQuota = {
   used: number;
@@ -386,7 +386,6 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
   const quota = getLiveQuota(userId);
   const cached = pulls.get(userId);
   const counter = `${quota.used}/${quota.userLimit} live searches used`;
-  const account = `${quota.globalUsed}/${quota.globalLimit} RentCast calls this month`;
   const blocked = quota.remaining <= 0 || quota.globalRemaining <= 0;
   if (!cached) {
     if (blocked) {
@@ -401,7 +400,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
         remaining: quota.remaining,
         userLimit: quota.userLimit,
         workarounds: [],
-        advice: `No cached listings, and live search is blocked (${counter}; ${account}). This app never exceeds 50 RentCast requests (no $0.20 overage). Upload a Redfin CSV or wait until next month.`,
+        advice: `No cached listings, and live search is unavailable (${counter}). Upload a Redfin CSV or wait until next month.`,
       };
     }
     return {
@@ -415,7 +414,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       remaining: quota.remaining,
       userLimit: quota.userLimit,
       workarounds: [],
-      advice: `You have used ${quota.used} of ${quota.userLimit} live searches (${quota.remaining} left). Cache is empty, so the first pull is required to load homes — that would spend 1, leaving ${Math.max(0, quota.remaining - 1)}. Account ${account}. Coffee/vibe/tighter beds after that re-grade for free.`,
+      advice: `You have used ${quota.used} of ${quota.userLimit} live searches (${quota.remaining} left). Cache is empty, so the first pull is required to load homes — that would spend 1, leaving ${Math.max(0, quota.remaining - 1)}. Coffee/vibe/tighter beds after that re-grade for free.`,
     };
   }
   const matches = filterListingsByQuery(cached.listings, query);
@@ -451,7 +450,7 @@ export function adviseLiveSearch(userId: string, query: SearchQuery): LiveAdvice
       remaining: quota.remaining,
       userLimit: quota.userLimit,
       workarounds,
-      advice: `Live search blocked (${counter}; ${account}). ${coveragePct}% of the cached homes still fit. ${workarounds.join(" · ") || "Ask chat to rescore the cache."} No overage requests will be sent.`,
+      advice: `Live search is unavailable (${counter}). ${coveragePct}% of the cached homes still fit. ${workarounds.join(" · ") || "Ask chat to rescore the cache."}`,
     };
   }
   return {

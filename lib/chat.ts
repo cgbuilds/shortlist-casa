@@ -39,7 +39,7 @@ When baseline is complete AND the user confirms, call commit_matrix. Tell them t
 
 ${WHY_GRADE_INSTRUCTIONS}
 
-LIVE SEARCH QUOTA (beta): 3 RentCast pulls per user, and a hard account cap of 50 RentCast HTTP calls per month (Developer plan). Never recommend a pull that would go over 50 — this app will not send overage requests ($0.20 each). The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-scores the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap.
+LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention account-wide API request totals, HTTP call counts, or a 50-call/month cap. If live search is unavailable, tell them to rescore the cache, upload a Redfin CSV, or wait until next month. The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-scores the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap (never an account API counter).
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
@@ -47,7 +47,7 @@ const RECAP_PROMPT = `You are a home-buying coach. The app already applied the u
 Never say "matrix". Say must-haves or home profile.
 Reply in short markdown: **bold** labels and dash lists.
 Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
-Do not claim you searched MLS. Live search is a separate confirmed pull (3/user, 50 account cap).`;
+Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API request totals.`;
 
 export type { ChatMessage } from "@/lib/types";
 
@@ -76,7 +76,7 @@ function getLlmClient(): LlmClient | null {
     return {
       provider: "groq",
       model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-        client: new OpenAI({ apiKey: groq, baseURL: "https://api.groq.com/openai/v1", timeout: 12_000, maxRetries: 0 }),
+      client: new OpenAI({ apiKey: groq, baseURL: "https://api.groq.com/openai/v1", timeout: 12_000, maxRetries: 0 }),
     };
   }
   const openai = process.env.OPENAI_API_KEY;

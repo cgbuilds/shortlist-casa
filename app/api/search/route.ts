@@ -277,7 +277,7 @@ export async function POST(request: Request) {
   if (body.source === "rentcast") {
     return NextResponse.json(
       {
-        error: "Direct RentCast queries are disabled so the 50/month account cap cannot be bypassed. Use live search (cached) or a Redfin CSV.",
+        error: "Direct RentCast queries are disabled. Use live search (cached) or a Redfin CSV.",
         quota: getLiveQuota(user.id),
       },
       { status: 400 }

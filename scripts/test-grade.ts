@@ -196,6 +196,10 @@ async function main() {
   assert(atCap.action !== "fetch", "never fetch live listings after the 50-call hard cap");
   const capAdvice = adviseLiveSearch("no-cache-cap-user", wide);
   assert(capAdvice.recommendation === "quota", "chat treats the 50-call cap as quota");
+  assert(
+    !/Account |50 API|50 RentCast|\$0\.20|overage|HTTP call/i.test(capAdvice.advice),
+    "quota advice does not mention account API totals"
+  );
   resetLiveQuotaForTests();
   rememberLivePull("cache-user", wide, [sample]);
   rememberLivePull("cov-user", wide, [twoBed, threeBed]);
