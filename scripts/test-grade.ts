@@ -15,7 +15,7 @@ import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiv
 import { outboundListingLinks } from "../lib/outbound-links";
 import { starterMatrix } from "../lib/starter-profile";
 import { wantsRescore, looksLikeCriteria } from "../lib/chat-intent";
-import { sanitizeListings, parseStoredSession } from "../lib/listings-payload";
+import { sanitizeListings, parseStoredSession, isOwnListSource } from "../lib/listings-payload";
 import { sampleListingFits } from "../lib/sample-fit";
 
 function assert(cond: unknown, msg: string) {
@@ -348,6 +348,11 @@ async function main() {
   orlando.searchArea = "Orlando, FL";
   assert(!sampleListingFits(valrico, orlando), "Tampa-sample home is hidden after Orlando criteria");
   assert(sampleListingFits(valrico, starterMatrix()), "Tampa-sample home stays for Tampa starter profile");
+  assert(isOwnListSource("rentcast", "starter-tampa.csv", true), "live pull is an own list");
+  assert(isOwnListSource("live"), "cached live set is an own list");
+  assert(!isOwnListSource("cache"), "regrade cache is not automatically an own list");
+  assert(!isOwnListSource("redfin-favorites"), "bundled sample is not an own list");
+  assert(!isOwnListSource("saved", "starter-tampa.csv"), "starter CSV is not an own list");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,

@@ -38,6 +38,10 @@ body {
   z-index: 0;
   background: #e8e2d6;
 }
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+  display: none;
+}
 .chat-md-invert a {
   color: var(--paper);
 }

@@ -1,12 +1,28 @@
 "use client";
 
 import { useEffect } from "react";
+import L from "leaflet";
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { GradeResult, PropertyListing } from "@/lib/types";
 import { formatAskPrice } from "@/lib/listing-market";
 import { outboundListingLinks } from "@/lib/outbound-links";
 import { gradeCaption } from "@/lib/grade";
+
+const PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+function silenceDefaultMarkerIcon() {
+  const proto = L.Icon.Default.prototype as L.Icon.Default & { _getIconUrl?: unknown };
+  delete proto._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconUrl: PIXEL,
+    iconRetinaUrl: PIXEL,
+    shadowUrl: PIXEL,
+    iconSize: [1, 1],
+    shadowSize: [1, 1],
+  });
+}
 
 type Row = { listing: PropertyListing; grade: GradeResult };
 
@@ -46,6 +62,7 @@ export function ResultsMap({
   onSelect: (id: string) => void;
   layoutTick?: string;
 }) {
+  silenceDefaultMarkerIcon();
   const points = rows
     .filter((r) => r.listing.latitude != null && r.listing.longitude != null)
     .map((r) => [r.listing.latitude as number, r.listing.longitude as number] as [number, number]);
@@ -58,8 +75,9 @@ export function ResultsMap({
       scrollWheelZoom
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        subdomains="abcd"
       />
       {points.length ? <FitBounds points={points} /> : null}
       <InvalidateSize tick={layoutTick} />

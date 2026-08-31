@@ -12,6 +12,15 @@ export type HomesteadSession = {
   hasOwnList?: boolean;
 };
 
+/** True when the scored set is a live pull or user CSV — not the bundled sample. */
+export function isOwnListSource(source?: string, filename?: string, pulled?: boolean) {
+  const src = source ?? "";
+  if (src === "rentcast" || src === "upload" || src === "live") return true;
+  if (pulled) return true;
+  if (src === "saved" && filename && !/starter/i.test(filename)) return true;
+  return false;
+}
+
 export function sanitizeListings(raw: unknown): PropertyListing[] {
   if (!Array.isArray(raw)) return [];
   const out: PropertyListing[] = [];

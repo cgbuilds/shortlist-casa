@@ -14,7 +14,7 @@ import { takeTopListings } from "@/lib/grade";
 import { postSearch, type SearchResponse } from "@/lib/search-client";
 import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
 import { sampleListingFits } from "@/lib/sample-fit";
-import { readStoredPool, readStoredSession, writeStoredPool, writeStoredMatrix, writeStoredSession } from "@/lib/listings-payload";
+import { isOwnListSource, readStoredPool, readStoredSession, writeStoredPool, writeStoredMatrix, writeStoredSession } from "@/lib/listings-payload";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -23,13 +23,6 @@ const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m
 
 type Row = { listing: PropertyListing; grade: GradeResult };
 const BANNER_KEY = "homestead-starter-banner-dismissed";
-
-function isOwnListSource(source: string, filename?: string, pulled?: boolean) {
-  if (source === "rentcast" || source === "upload") return true;
-  if (source === "live" && pulled) return true;
-  if (source === "saved" && filename && !/starter/i.test(filename) && filename !== "live-search.json") return true;
-  return false;
-}
 
 function confirmScoring(kind: "live" | "cache" | "score", data?: SearchResponse) {
   if (!data) return "Could not finish that action.";
@@ -137,8 +130,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     }
     if (isOwnListSource(src, data.saved?.filename, data.pulled)) {
       starterOnly.current = false;
+      leftStarter.current = true;
       setHasOwnList(true);
       setNeedListHint(false);
+      setShowBanner(false);
       writeStoredSession({ hasOwnList: true, awaitingSearch: false });
     }
     if (Array.isArray(data.listings) && data.listings.length && !opts?.partial) {
@@ -169,7 +164,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           poolRef.current = [];
           writeStoredPool([]);
         }
-        if (src === "rentcast" || src === "upload" || src === "live") {
+        if (isOwnListSource(src, data.saved?.filename, data.pulled)) {
           leftStarter.current = true;
         }
       }
@@ -292,6 +287,13 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         if (data.saved) {
           setSavedFilename(data.saved.filename);
           setSavedCount(data.saved.count);
+          if (isOwnListSource("saved", data.saved.filename)) {
+            starterOnly.current = false;
+            leftStarter.current = true;
+            setHasOwnList(true);
+            setNeedListHint(false);
+            setShowBanner(false);
+          }
         }
       })
       .catch(() => undefined);
@@ -301,7 +303,13 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       poolRef.current = stored.listings;
       leftStarter.current = true;
     }
-    if (stored.awaitingSearch) {
+    if (stored.hasOwnList) {
+      starterOnly.current = false;
+      leftStarter.current = true;
+      setHasOwnList(true);
+      setNeedListHint(false);
+      setShowBanner(false);
+    } else if (stored.awaitingSearch) {
       criteriaSent.current = true;
       starterOnly.current = true;
       setNeedListHint(true);
@@ -328,6 +336,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       } catch {
         if (poolRef.current.length) return;
       }
+      if (leftStarter.current || stored.hasOwnList) return;
       try {
         await runScoring({ source: "favorites", draft });
       } catch (err) {
@@ -363,7 +372,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           </div>
           {progressLine ? <p className="mt-2 text-xs text-[var(--muted)]">{progressLine}</p> : null}
         </div>
-      ) : showBanner ? (
+      ) : showBanner && !hasOwnList ? (
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm">
           <p className="min-w-0 text-[var(--ink)]">
             Starter homes are on the map.{" "}

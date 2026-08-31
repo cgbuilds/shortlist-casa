@@ -220,14 +220,15 @@ export async function POST(request: Request) {
           );
         }
         if (!result.listings.length) {
-          return NextResponse.json({
-            source: result.source,
-            notice: result.notice ?? "No live listings matched that search.",
-            results: [],
-            quota,
-            cache: getLiveCache(user.id),
-            advice: adviseLiveSearch(user.id, query),
-          });
+          return NextResponse.json(
+            {
+              error: result.notice ?? "No live listings matched that search.",
+              quota: getLiveQuota(user.id),
+              cache: getLiveCache(user.id),
+              advice: adviseLiveSearch(user.id, query),
+            },
+            { status: result.blockedByCap ? 429 : 502 }
+          );
         }
         listings = result.listings;
         quota = markFetched(user.id, query, listings);
@@ -236,8 +237,9 @@ export async function POST(request: Request) {
       }
       adoptLiveListings(user, listings);
       const filtered = filterListingsByQuery(listings, query);
+      const working = filtered.length ? filtered : listings;
       listings.forEach(rememberListing);
-      return respondRanked(body.stream, filtered, matrix, async (ranked) => {
+      return respondRanked(body.stream, working, matrix, async (ranked) => {
         await saveSearch(user, { source: "live", query, fromCache, pulled }, ranked.map((r) => r.listing.id));
         await saveListingSet(user, ranked.map((r) => r.listing), pulled ? "live" : "cache");
         for (const row of ranked) await saveGrade(user, row.listing, row.grade);
@@ -257,7 +259,7 @@ export async function POST(request: Request) {
                 searchArea: matrix.searchArea,
               })} ${top.length} pass must-haves.${packed.clip}`;
         return {
-          source: pulled ? "rentcast" : "cache",
+          source: pulled ? "rentcast" : "live",
           notice,
           results: packed.results,
           totalMatched: packed.totalMatched,
@@ -289,7 +291,14 @@ export async function POST(request: Request) {
   if (body.source === "regrade" || !body.source) {
     const fromClient = sanitizeListings(body.listings);
     const liveList = listingsFromCache(user.id);
-    let listings = fromClient.length ? fromClient : liveList?.length ? liveList : csv;
+    const liveAdopted = saved?.filename === "live-search.json" && Boolean(liveList?.length);
+    let listings = liveAdopted
+      ? liveList!
+      : fromClient.length
+        ? fromClient
+        : liveList?.length
+          ? liveList
+          : csv;
     if (!listings.length) listings = await loadListingSet(user);
     if (!listings.length) {
       const baseline = baselineStatus(matrix);
@@ -309,8 +318,10 @@ export async function POST(request: Request) {
       );
     }
     const query = queryFromMatrix(matrix);
-    const scoped = fromClient.length ? fromClient : liveList?.length ? listings : filterList(listings, body);
-    const working = fromClient.length ? fromClient : filterListingsByQuery(scoped, query);
+    const fromLive = liveAdopted || (!fromClient.length && Boolean(liveList?.length));
+    const scoped = fromLive ? listings : fromClient.length ? fromClient : liveList?.length ? listings : filterList(listings, body);
+    const filtered = fromLive || !fromClient.length ? filterListingsByQuery(scoped, query) : fromClient;
+    const working = filtered.length ? filtered : scoped;
     return respondRanked(body.stream, working, matrix, async (ranked) => {
       await saveSearch(user, { source: "regrade" }, ranked.map((r) => r.listing.id));
       await saveListingSet(user, ranked.map((r) => r.listing), "regrade");
@@ -319,7 +330,11 @@ export async function POST(request: Request) {
       const incomplete = ranked.filter((r) => r.grade.band === "incomplete").length;
       const cache = getLiveCache(user.id);
       const quota = getLiveQuota(user.id);
-      const from = fromClient.length || liveList?.length ? "your last search" : `saved file ${saved?.filename ?? "CSV"}`;
+      const from = fromLive
+        ? "your live search"
+        : fromClient.length || liveList?.length
+          ? "your last search"
+          : `saved file ${saved?.filename ?? "CSV"}`;
       const notice =
         !ranked.length && scoped.length
           ? matrix.intent === "rent"
@@ -329,7 +344,7 @@ export async function POST(request: Request) {
             ? `Scored ${ranked.length} homes from ${from}, but every score is incomplete — your must-haves are not set, or listings lack year/type/price.${packed.clip}`
             : `Scored ${ranked.length} homes from ${from}${incomplete ? ` · ${incomplete} incomplete` : ""}.${packed.clip}`;
       return {
-        source: fromClient.length || liveList?.length ? "cache" : "saved",
+        source: fromLive ? "live" : fromClient.length || liveList?.length ? "cache" : "saved",
         notice,
         results: packed.results,
         totalMatched: packed.totalMatched,

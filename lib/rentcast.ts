@@ -200,7 +200,8 @@ export async function searchListings(query: SearchQuery): Promise<{
       return { listings, source: "rentcast" };
     } catch (err) {
       const message = err instanceof Error ? err.message : "error";
-      const blockedByCap = message.includes("monthly cap of 50");
+      const blockedByCap =
+        message === RENTCAST_CAP_MESSAGE || /unavailable right now|monthly cap|50 API/i.test(message);
       return {
         listings: [],
         source: "rentcast",
