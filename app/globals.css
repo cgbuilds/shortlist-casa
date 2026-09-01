@@ -4,6 +4,10 @@ html,
 body {
   overflow-x: hidden;
   touch-action: manipulation;
+  background: var(--paper);
+  min-height: 100%;
+  min-height: 100dvh;
+  min-height: 100svh;
 }
 
 @media (max-width: 640px) {

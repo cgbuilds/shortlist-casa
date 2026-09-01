@@ -111,8 +111,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     body.style.overflow = "hidden";
     html.style.overscrollBehavior = "none";
     body.style.overscrollBehavior = "none";
-    html.style.height = "100%";
-    body.style.height = "100%";
+    html.style.height = "100svh";
+    body.style.height = "100svh";
+    html.style.background = "var(--paper)";
+    body.style.background = "var(--paper)";
     return () => {
       html.style.overflow = prevHtml;
       body.style.overflow = prevBody;
@@ -120,6 +122,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       body.style.overscrollBehavior = "";
       html.style.height = "";
       body.style.height = "";
+      html.style.background = "";
+      body.style.background = "";
     };
   }, []);
 
@@ -429,7 +433,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-        <div className="relative min-h-0 min-w-0 flex-1 basis-0 overflow-hidden">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden md:basis-0">
           <ResultsMap
             key={mapSetKey}
             rows={rows}
@@ -445,7 +449,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             />
           )}
         </div>
-        <div className="min-h-0 flex-1 basis-0 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain p-3 md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 xl:w-[26rem]">
+        <div className="min-h-0 max-h-[46%] shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:max-h-none md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 xl:w-[26rem]">
+          <div className="space-y-3">
           {rows.map((row) => (
             <div
               key={row.listing.id}
@@ -462,6 +467,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
                 : "Loading sample homes… If nothing appears, use Chat to set your must-haves."}
             </p>
           ) : null}
+          </div>
         </div>
       </div>
 
