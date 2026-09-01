@@ -67,6 +67,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [chatUsed, setChatUsed] = useState(false);
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
   const [narrow, setNarrow] = useState(false);
+  const [userPickedPin, setUserPickedPin] = useState(false);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
@@ -400,8 +401,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }, []);
 
   const progressLine = scoreProgress && scoreProgress.total > 0 ? scoreStatusLabel(scoreProgress) : "";
-  const mobileMapOnly = !hasOwnList && !selectedId;
-  const listRows = narrow && !hasOwnList && selectedId ? rows.filter((row) => row.listing.id === selectedId) : rows;
+  const mobileMapOnly = !hasOwnList && !userPickedPin;
+  const listRows = narrow && !hasOwnList && userPickedPin ? rows.filter((row) => row.listing.id === selectedId) : rows;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -457,7 +458,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           <ResultsMap
             rows={rows}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={(id) => {
+              setSelectedId(id);
+              setUserPickedPin(true);
+            }}
             layoutTick={`${chatOpen ? "chat" : "map"}:${rows.length}:${mobileMapOnly ? "maponly" : "split"}`}
             here={here}
             lockToHere={Boolean(here) && !hasOwnList}
@@ -475,7 +479,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           {listRows.map((row) => (
             <div
               key={row.listing.id}
-              onClick={() => setSelectedId(row.listing.id)}
+              onClick={() => {
+                setSelectedId(row.listing.id);
+                setUserPickedPin(true);
+              }}
               className={row.listing.id === selectedId ? "rounded-2xl ring-2 ring-[var(--accent)]" : ""}
             >
               <PropertyCard listing={row.listing} grade={row.grade} />
