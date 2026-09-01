@@ -100,13 +100,20 @@ export function ChatSheet({
       >
         <div className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
           <p className="text-base font-medium">Tell Chat your must-haves</p>
-          <button
-            type="button"
-            className="inline-flex min-h-11 min-w-[4.5rem] items-center justify-center rounded-xl bg-[var(--ink)] px-4 text-base font-medium text-[var(--paper)]"
-            onClick={onClose}
-          >
-            Done
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <form action="/api/logout" method="post" className="md:hidden" suppressHydrationWarning>
+              <button type="submit" className="min-h-11 px-2 text-sm text-[var(--muted)]">
+                Sign out
+              </button>
+            </form>
+            <button
+              type="button"
+              className="inline-flex min-h-11 min-w-[4.5rem] items-center justify-center rounded-xl bg-[var(--ink)] px-4 text-base font-medium text-[var(--paper)]"
+              onClick={onClose}
+            >
+              Done
+            </button>
+          </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>

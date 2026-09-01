@@ -66,6 +66,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [hasOwnList, setHasOwnList] = useState(false);
   const [chatUsed, setChatUsed] = useState(false);
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
+  const [narrow, setNarrow] = useState(false);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
@@ -131,6 +132,14 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     void readPhoneLocation().then((pos) => {
       if (pos) setHere(pos);
     });
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
   }, []);
 
   const persistMatrix = (m: UserMatrix) => {
@@ -391,11 +400,13 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }, []);
 
   const progressLine = scoreProgress && scoreProgress.total > 0 ? scoreStatusLabel(scoreProgress) : "";
+  const mobileMapOnly = !hasOwnList && !selectedId;
+  const listRows = narrow && !hasOwnList && selectedId ? rows.filter((row) => row.listing.id === selectedId) : rows;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {needListHint && !hasOwnList ? (
-        <div className="shrink-0 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-3">
+        <div className="hidden shrink-0 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-3 md:block">
           <p className="text-sm text-[var(--ink)]">
             {rows.length
               ? "Only sample homes that still fit your must-haves are shown. This is not a live search yet."
@@ -409,7 +420,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           {progressLine ? <p className="mt-2 text-xs text-[var(--muted)]">{progressLine}</p> : null}
         </div>
       ) : showBanner && !hasOwnList ? (
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm">
+        <div className="hidden shrink-0 items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm md:flex">
           <p className="min-w-0 text-[var(--ink)]">
             Starter homes are on the map. Set must-haves in{" "}
             <button type="button" className="font-medium underline" onClick={openChat}>
@@ -430,10 +441,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           </button>
         </div>
       ) : progressLine ? (
-        <p className="shrink-0 border-b border-[var(--line)] px-3 py-1.5 text-xs text-[var(--muted)]">{progressLine}</p>
+        <p className="hidden shrink-0 border-b border-[var(--line)] px-3 py-1.5 text-xs text-[var(--muted)] md:block">{progressLine}</p>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
+      <div className="hidden flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2 md:flex">
         <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">{resultsHeadline(rows.length, totalMatched)}</p>
         {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
       </div>
@@ -447,21 +458,21 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             rows={rows}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            layoutTick={`${chatOpen ? "chat" : "map"}:${rows.length}`}
+            layoutTick={`${chatOpen ? "chat" : "map"}:${rows.length}:${mobileMapOnly ? "maponly" : "split"}`}
             here={here}
             lockToHere={Boolean(here) && !hasOwnList}
           />
           {chatOpen ? null : (
             <ChatFab
-              className="absolute bottom-4 right-4 z-20"
+              className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-20"
               nudge={!chatUsed}
               onClick={openChat}
             />
           )}
         </div>
-        <div className="h-fit max-h-[50svh] w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain border-t-2 border-[var(--line)] bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:h-full md:max-h-none md:w-[22rem] md:flex-none md:border-t-0 md:border-l-2 xl:w-[26rem]">
+        <div className={`${mobileMapOnly ? "hidden md:block" : ""} h-fit max-h-[50svh] w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain border-t-2 border-[var(--line)] bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:h-full md:max-h-none md:w-[22rem] md:flex-none md:border-t-0 md:border-l-2 xl:w-[26rem]`}>
           <div className="space-y-3">
-          {rows.map((row) => (
+          {listRows.map((row) => (
             <div
               key={row.listing.id}
               onClick={() => setSelectedId(row.listing.id)}
