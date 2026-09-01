@@ -462,7 +462,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             />
           )}
         </div>
-        <div className="min-h-0 max-h-[40svh] shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:max-h-none md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 xl:w-[26rem]">
+        <div className="min-h-[12.5rem] max-h-[55svh] shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain border-t-2 border-[var(--line)] bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:min-h-0 md:max-h-none md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 md:border-t-0 md:border-l-2 xl:w-[26rem]">
           <div className="space-y-3">
           {rows.map((row) => (
             <div
