@@ -13,7 +13,7 @@ export function AppShell({
 }) {
   return (
     <div className={full ? "fixed inset-x-0 top-0 flex h-[100svh] max-h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden overscroll-none bg-[var(--paper)]" : "min-h-screen"}>
-      <header className={full ? "z-20 hidden shrink-0 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--paper)_92%,transparent)] md:block" : "z-20 shrink-0 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--paper)_92%,transparent)]"}>
+      <header className="z-20 shrink-0 border-b-2 border-[var(--line)] bg-[var(--paper-2)] pt-[max(0.25rem,env(safe-area-inset-top))]">
         <div className="flex items-center justify-between gap-4 px-4 py-2.5">
           <Link href="/app" className="font-[family-name:var(--font-display)] text-lg tracking-tight">
             {BRAND_NAME}

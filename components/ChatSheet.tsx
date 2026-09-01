@@ -100,20 +100,13 @@ export function ChatSheet({
       >
         <div className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
           <p className="text-base font-medium">Tell Chat your must-haves</p>
-          <div className="flex shrink-0 items-center gap-2">
-            <form action="/api/logout" method="post" className="md:hidden" suppressHydrationWarning>
-              <button type="submit" className="min-h-11 px-2 text-sm text-[var(--muted)]">
-                Sign out
-              </button>
-            </form>
-            <button
-              type="button"
-              className="inline-flex min-h-11 min-w-[4.5rem] items-center justify-center rounded-xl bg-[var(--ink)] px-4 text-base font-medium text-[var(--paper)]"
-              onClick={onClose}
-            >
-              Done
-            </button>
-          </div>
+          <button
+            type="button"
+            className="inline-flex min-h-11 min-w-[4.5rem] items-center justify-center rounded-xl bg-[var(--ink)] px-4 text-base font-medium text-[var(--paper)]"
+            onClick={onClose}
+          >
+            Done
+          </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
@@ -136,7 +129,7 @@ export function ChatFab({
       onClick={onClick}
       aria-label="Tell Chat your must-haves"
       title="Tell Chat your must-haves"
-      className={`inline-flex h-12 items-center gap-2 rounded-full bg-[var(--accent)] px-4 text-sm font-medium text-white shadow-lg hover:opacity-95 ${nudge ? "chat-bounce" : ""} ${className}`}
+      className={`inline-flex h-12 items-center gap-2 rounded-full bg-[var(--accent)] px-4 text-sm font-medium text-white shadow-lg ring-2 ring-white/70 hover:opacity-95 ${nudge ? "chat-bounce" : ""} ${className}`}
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
         <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" strokeLinejoin="round" />

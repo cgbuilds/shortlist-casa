@@ -66,8 +66,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [hasOwnList, setHasOwnList] = useState(false);
   const [chatUsed, setChatUsed] = useState(false);
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
-  const [narrow, setNarrow] = useState(false);
-  const [userPickedPin, setUserPickedPin] = useState(false);
+  const [bounceChat, setBounceChat] = useState(true);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
@@ -78,7 +77,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const matrixRef = useRef(matrix);
   matrixRef.current = matrix;
 
-  const openChat = useCallback(() => setChatOpen(true), []);
+  const openChat = useCallback(() => {
+    setBounceChat(false);
+    setChatOpen(true);
+  }, []);
   const closeChat = useCallback(() => {
     setChatOpen(false);
     setKeyboardOpen(false);
@@ -133,14 +135,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     void readPhoneLocation().then((pos) => {
       if (pos) setHere(pos);
     });
-  }, []);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const apply = () => setNarrow(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
   }, []);
 
   const persistMatrix = (m: UserMatrix) => {
@@ -401,8 +395,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }, []);
 
   const progressLine = scoreProgress && scoreProgress.total > 0 ? scoreStatusLabel(scoreProgress) : "";
-  const mobileMapOnly = !hasOwnList && !userPickedPin;
-  const listRows = narrow && !hasOwnList && userPickedPin ? rows.filter((row) => row.listing.id === selectedId) : rows;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -445,57 +437,53 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         <p className="hidden shrink-0 border-b border-[var(--line)] px-3 py-1.5 text-xs text-[var(--muted)] md:block">{progressLine}</p>
       ) : null}
 
-      <div className="hidden flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2 md:flex">
-        <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">{resultsHeadline(rows.length, totalMatched)}</p>
-        {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
-      </div>
       {job?.tone === "err" ? (
         <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">{job.text}</p>
       ) : null}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-          <ResultsMap
-            rows={rows}
-            selectedId={selectedId}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setUserPickedPin(true);
-            }}
-            layoutTick={`${chatOpen ? "chat" : "map"}:${rows.length}:${mobileMapOnly ? "maponly" : "split"}`}
-            here={here}
-            lockToHere={Boolean(here) && !hasOwnList}
-          />
-          {chatOpen ? null : (
-            <ChatFab
-              className="absolute bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-20"
-              nudge={!chatUsed}
-              onClick={openChat}
-            />
-          )}
-        </div>
-        <div className={`${mobileMapOnly ? "hidden md:block" : ""} h-fit max-h-[50svh] w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain border-t-2 border-[var(--line)] bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:h-full md:max-h-none md:w-[22rem] md:flex-none md:border-t-0 md:border-l-2 xl:w-[26rem]`}>
-          <div className="space-y-3">
-          {listRows.map((row) => (
-            <div
-              key={row.listing.id}
-              onClick={() => {
-                setSelectedId(row.listing.id);
-                setUserPickedPin(true);
-              }}
-              className={row.listing.id === selectedId ? "rounded-2xl ring-2 ring-[var(--accent)]" : ""}
-            >
-              <PropertyCard listing={row.listing} grade={row.grade} />
+      <div className="min-h-0 flex-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:p-3">
+        <div className="flex h-full min-h-0 flex-col gap-2 rounded-3xl border-2 border-[var(--line)] bg-[color-mix(in_oklab,var(--ink)_7%,var(--paper))] p-2 shadow-[inset_0_1px_0_rgb(255_255_255/0.35)] md:flex-row md:gap-3 md:p-3">
+          <section className="relative min-h-0 min-w-0 flex-1">
+            <div className="absolute inset-0 overflow-hidden rounded-2xl border-2 border-[var(--ink)]/25 bg-[var(--paper-2)] shadow-sm">
+              <ResultsMap
+                rows={rows}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                layoutTick={`${chatOpen ? "chat" : "map"}:${rows.length}:board`}
+                here={here}
+                lockToHere={Boolean(here) && !hasOwnList}
+              />
             </div>
-          ))}
-          {rows.length === 0 ? (
-            <p className="text-sm text-[var(--muted)]">
-              {needListHint
-                ? "No matching homes on the sample list. Use Chat to upload a Redfin Favorites CSV or run a live search."
-                : "Loading sample homes… If nothing appears, use Chat to set your must-haves."}
-            </p>
-          ) : null}
-          </div>
+            {chatOpen ? null : (
+              <ChatFab className="absolute bottom-3 right-3 z-20" nudge={bounceChat} onClick={openChat} />
+            )}
+          </section>
+          <section className="flex h-[min(42svh,22rem)] min-h-[11rem] w-full shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-[var(--ink)]/25 bg-[var(--paper-2)] shadow-sm md:h-full md:min-h-0 md:w-[22rem] md:flex-none xl:w-[26rem]">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
+              <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">{resultsHeadline(rows.length, totalMatched)}</p>
+              {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
+            </div>
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-3">
+              <div className="space-y-3">
+                {rows.map((row) => (
+                  <div
+                    key={row.listing.id}
+                    onClick={() => setSelectedId(row.listing.id)}
+                    className={row.listing.id === selectedId ? "rounded-2xl ring-2 ring-[var(--accent)]" : ""}
+                  >
+                    <PropertyCard listing={row.listing} grade={row.grade} />
+                  </div>
+                ))}
+                {rows.length === 0 ? (
+                  <p className="text-sm text-[var(--muted)]">
+                    {needListHint
+                      ? "No matching homes on the sample list. Use Chat to upload a Redfin Favorites CSV or run a live search."
+                      : "Loading sample homes… If nothing appears, use Chat to set your must-haves."}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
