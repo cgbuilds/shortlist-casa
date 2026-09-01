@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import L from "leaflet";
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, Circle, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { GradeResult, PropertyListing } from "@/lib/types";
 import { formatAskPrice } from "@/lib/listing-market";
 import { outboundListingLinks } from "@/lib/outbound-links";
 import { gradeCaption } from "@/lib/grade";
+import { milesToMeters, radiusBounds, SEARCH_RADIUS_MILES } from "@/lib/geo";
 
 const PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
@@ -69,6 +70,14 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
+function FitRadius({ lat, lng, miles }: { lat: number; lng: number; miles: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.fitBounds(radiusBounds(lat, lng, miles), { padding: [28, 28], maxZoom: 12 });
+  }, [map, lat, lng, miles]);
+  return null;
+}
+
 function colorFor(grade: GradeResult) {
   if (grade.band === "miss" || grade.mustHaveFailed) return "#9a8f80";
   if (grade.band === "superb" || grade.band === "excellent") return "#2f5d50";
@@ -81,27 +90,41 @@ export function ResultsMap({
   selectedId,
   onSelect,
   layoutTick = "default",
+  here = null,
+  lockToHere = false,
 }: {
   rows: Row[];
   selectedId?: string | null;
   onSelect: (id: string) => void;
   layoutTick?: string;
+  here?: { lat: number; lng: number } | null;
+  lockToHere?: boolean;
 }) {
   silenceDefaultMarkerIcon();
   const points = rows
     .filter((r) => r.listing.latitude != null && r.listing.longitude != null)
     .map((r) => [r.listing.latitude as number, r.listing.longitude as number] as [number, number]);
+  const showHere = Boolean(here);
+  const useRadius = Boolean(lockToHere && here);
 
   return (
     <MapContainer
-      center={points[0] ?? [27.89, -82.25]}
+      center={here ? [here.lat, here.lng] : (points[0] ?? [27.89, -82.25])}
       zoom={11}
       className="h-full w-full"
       scrollWheelZoom
     >
       <MapTiles />
-      {points.length ? <FitBounds points={points} /> : null}
-      <InvalidateSize tick={layoutTick} />
+      {useRadius && here ? <FitRadius lat={here.lat} lng={here.lng} miles={SEARCH_RADIUS_MILES} /> : null}
+      {!useRadius && points.length ? <FitBounds points={points} /> : null}
+      <InvalidateSize tick={`${layoutTick}:${here ? "here" : "nohere"}:${useRadius ? "r" : "p"}`} />
+      {showHere && here ? (
+        <Circle
+          center={[here.lat, here.lng]}
+          radius={milesToMeters(SEARCH_RADIUS_MILES)}
+          pathOptions={{ color: "#2f5d50", weight: 1, fillColor: "#2f5d50", fillOpacity: 0.06 }}
+        />
+      ) : null}
       {rows.map((row) => {
         if (row.listing.latitude == null || row.listing.longitude == null) return null;
         const selected = row.listing.id === selectedId;

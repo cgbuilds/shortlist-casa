@@ -15,6 +15,7 @@ import { postSearch, type SearchResponse } from "@/lib/search-client";
 import { resultsHeadline, scoreStatusLabel, type RankProgress } from "@/lib/rank-presentation";
 import { sampleListingFits } from "@/lib/sample-fit";
 import { isOwnListSource, readStoredPool, readStoredSession, writeStoredPool, writeStoredMatrix, writeStoredSession } from "@/lib/listings-payload";
+import { readPhoneLocation } from "@/lib/geo";
 
 const ResultsMap = dynamic(() => import("@/components/ResultsMap").then((m) => m.ResultsMap), {
   ssr: false,
@@ -65,6 +66,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [needListHint, setNeedListHint] = useState(false);
   const [hasOwnList, setHasOwnList] = useState(false);
   const [chatUsed, setChatUsed] = useState(false);
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
@@ -114,8 +116,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     body.style.overflow = "hidden";
     html.style.overscrollBehavior = "none";
     body.style.overscrollBehavior = "none";
-    html.style.height = "100svh";
-    body.style.height = "100svh";
     html.style.background = "var(--paper)";
     body.style.background = "var(--paper)";
     return () => {
@@ -123,11 +123,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       body.style.overflow = prevBody;
       html.style.overscrollBehavior = "";
       body.style.overscrollBehavior = "";
-      html.style.height = "";
-      body.style.height = "";
       html.style.background = "";
       body.style.background = "";
     };
+  }, []);
+
+  useEffect(() => {
+    void readPhoneLocation().then((pos) => {
+      if (pos) setHere(pos);
+    });
   }, []);
 
   const persistMatrix = (m: UserMatrix) => {
@@ -440,13 +444,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden md:basis-0">
+        <div className="relative min-h-0 min-w-0 flex-1 basis-0 overflow-hidden">
           <ResultsMap
             key={mapSetKey}
             rows={rows}
             selectedId={selectedId}
             onSelect={setSelectedId}
             layoutTick={chatOpen ? "chat" : "map"}
+            here={here}
+            lockToHere={Boolean(here) && !hasOwnList}
           />
           {chatOpen ? null : (
             <ChatFab
@@ -456,7 +462,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             />
           )}
         </div>
-        <div className="min-h-0 max-h-[46%] shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:max-h-none md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 xl:w-[26rem]">
+        <div className="min-h-0 max-h-[40svh] shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:max-h-none md:w-[22rem] md:flex-none md:basis-auto md:shrink-0 xl:w-[26rem]">
           <div className="space-y-3">
           {rows.map((row) => (
             <div

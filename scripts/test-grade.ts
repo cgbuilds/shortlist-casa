@@ -17,6 +17,7 @@ import { starterMatrix } from "../lib/starter-profile";
 import { wantsRescore, looksLikeCriteria } from "../lib/chat-intent";
 import { sanitizeListings, parseStoredSession, isOwnListSource } from "../lib/listings-payload";
 import { sampleListingFits } from "../lib/sample-fit";
+import { radiusBounds, SEARCH_RADIUS_MILES } from "../lib/geo";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -353,6 +354,10 @@ async function main() {
   assert(!isOwnListSource("cache"), "regrade cache is not automatically an own list");
   assert(!isOwnListSource("redfin-favorites"), "bundled sample is not an own list");
   assert(!isOwnListSource("saved", "starter-tampa.csv"), "starter CSV is not an own list");
+
+  const box = radiusBounds(27.95, -82.46, SEARCH_RADIUS_MILES);
+  assert(box[0][0] < 27.95 && box[1][0] > 27.95, "20-mile radius spans north/south");
+  assert(Math.abs(box[1][0] - box[0][0] - (40 / 69)) < 0.01, "20-mile latitude span");
 
   console.log("grade self-test ok", {
     favorites: favorites.length,
