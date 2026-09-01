@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { BRAND_NAME } from "@/lib/brand";
 import { decodeShare } from "@/lib/share";
 import { writeStoredSession } from "@/lib/listings-payload";
@@ -43,9 +44,9 @@ export function OpenShare() {
         <>
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl">Couldn’t open that shortlist</h1>
           <p className="mt-3 text-[var(--muted)]">{error}</p>
-          <a href="/" className="mt-6 text-[var(--accent)] underline">
+          <Link href="/" className="mt-6 text-[var(--accent)] underline">
             Go to Shortlist
-          </a>
+          </Link>
         </>
       ) : (
         <>
