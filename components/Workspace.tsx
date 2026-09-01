@@ -441,8 +441,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
         <p className="border-b border-[var(--line)] bg-red-50 px-3 py-2 text-sm text-red-800">{job.text}</p>
       ) : null}
 
-      <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(13rem,50svh)] overflow-hidden md:flex md:flex-row">
-        <div className="relative min-h-0 min-w-0 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
           <ResultsMap
             rows={rows}
             selectedId={selectedId}
@@ -459,7 +459,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
             />
           )}
         </div>
-        <div className="min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain border-t-2 border-[var(--line)] bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:w-[22rem] md:flex-none md:shrink-0 md:border-t-0 md:border-l-2 xl:w-[26rem]">
+        <div className="h-fit max-h-[50svh] w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain border-t-2 border-[var(--line)] bg-[var(--paper)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:h-full md:max-h-none md:w-[22rem] md:flex-none md:border-t-0 md:border-l-2 xl:w-[26rem]">
           <div className="space-y-3">
           {rows.map((row) => (
             <div
