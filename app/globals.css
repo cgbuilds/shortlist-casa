@@ -2,12 +2,14 @@
 
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
+  max-width: 100%;
   touch-action: manipulation;
   background: var(--paper);
   min-height: 100%;
   min-height: 100dvh;
   min-height: 100svh;
+  font-size: 16px;
 }
 
 @media (max-width: 640px) {
@@ -39,8 +41,15 @@ body {
 .leaflet-container {
   height: 100%;
   width: 100%;
+  max-width: 100%;
   z-index: 0;
   background: #e8e2d6;
+  font: 12px/1.5 system-ui, sans-serif;
+}
+.leaflet-control-zoom,
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  display: none !important;
 }
 .leaflet-marker-icon,
 .leaflet-marker-shadow {

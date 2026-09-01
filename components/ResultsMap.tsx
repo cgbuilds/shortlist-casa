@@ -55,8 +55,16 @@ type Row = { listing: PropertyListing; grade: GradeResult };
 function InvalidateSize({ tick }: { tick: string }) {
   const map = useMap();
   useEffect(() => {
-    const id = window.setTimeout(() => map.invalidateSize(), 80);
-    return () => window.clearTimeout(id);
+    const el = map.getContainer();
+    const run = () => map.invalidateSize({ animate: false });
+    run();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => run()) : null;
+    ro?.observe(el.parentElement ?? el);
+    const timers = [50, 200, 500, 1000].map((ms) => window.setTimeout(run, ms));
+    return () => {
+      ro?.disconnect();
+      timers.forEach((id) => window.clearTimeout(id));
+    };
   }, [map, tick]);
   return null;
 }
@@ -111,7 +119,9 @@ export function ResultsMap({
     <MapContainer
       center={here ? [here.lat, here.lng] : (points[0] ?? [27.89, -82.25])}
       zoom={11}
-      className="h-full w-full"
+      zoomControl={false}
+      attributionControl
+      className="h-full w-full max-w-full"
       scrollWheelZoom
     >
       <MapTiles />
