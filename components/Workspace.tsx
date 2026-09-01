@@ -85,6 +85,9 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       /* ignore */
     }
   }, []);
+  const revealMap = useCallback(() => {
+    window.setTimeout(() => closeChat(), 650);
+  }, [closeChat]);
 
   useEffect(() => {
     if (
@@ -277,11 +280,15 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     }
     if (event.livePull) {
       starterOnly.current = false;
-      return confirmScoring("live", await runLive(draft, true));
+      const data = await runLive(draft, true);
+      if (!data?.error) revealMap();
+      return confirmScoring("live", data);
     }
     if (event.liveSearch) {
       starterOnly.current = false;
-      return confirmScoring("cache", await runLive(draft, false));
+      const data = await runLive(draft, false);
+      if (!data?.error) revealMap();
+      return confirmScoring("cache", data);
     }
     if (event.rescore || event.matrix) {
       const data = await refreshGrades(draft);
@@ -512,7 +519,8 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
                         ? data.error
                         : confirmScoring(kind, data as SearchResponse),
                     });
-                    setChatOpen(true);
+                    if (data.error) setChatOpen(true);
+                    else revealMap();
                   }}
                   onScoreProgress={(p) => {
                     setScoreProgress(p);
