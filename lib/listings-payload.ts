@@ -39,7 +39,7 @@ export function sanitizeListings(raw: unknown): PropertyListing[] {
   return out;
 }
 
-function looksLikeMatrix(raw: unknown): raw is UserMatrix {
+export function looksLikeMatrix(raw: unknown): raw is UserMatrix {
   if (!raw || typeof raw !== "object") return false;
   const m = raw as UserMatrix;
   return typeof m.searchArea === "string" && typeof m.catalogVersion === "string" && Boolean(m.dimensions);

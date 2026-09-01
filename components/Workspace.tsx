@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
 import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_USED_KEY } from "@/components/ChatPanel";
 import { ChatFab, ChatSheet } from "@/components/ChatSheet";
+import { ShareLinkButton } from "@/components/ShareLinkButton";
 import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
 import { RedfinUpload } from "@/components/RedfinUpload";
@@ -67,6 +68,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [chatUsed, setChatUsed] = useState(false);
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
   const [bounceChat, setBounceChat] = useState(true);
+  const [fromShare, setFromShare] = useState(false);
   const noticeId = useRef(0);
   const scoreAbort = useRef<AbortController | null>(null);
   const scoreGen = useRef(0);
@@ -104,9 +106,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
     try {
       if (window.sessionStorage.getItem(CHAT_USED_KEY) === "1") setChatUsed(true);
       const welcome = new URLSearchParams(window.location.search).get("welcome");
-      if (welcome === "1") {
+      const shared = new URLSearchParams(window.location.search).get("shared");
+      if (welcome === "1" || shared === "1") {
         window.history.replaceState({}, "", "/app");
       }
+      if (shared === "1") setFromShare(true);
       setChatOpen(false);
     } catch {
       setChatOpen(false);
@@ -398,7 +402,14 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {needListHint && !hasOwnList ? (
+      {fromShare ? (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm">
+          <p className="min-w-0 text-[var(--ink)]">Someone shared this shortlist with you.</p>
+          <button type="button" className="shrink-0 text-xs text-[var(--muted)]" onClick={() => setFromShare(false)}>
+            Dismiss
+          </button>
+        </div>
+      ) : needListHint && !hasOwnList ? (
         <div className="hidden shrink-0 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-3 md:block">
           <p className="text-sm text-[var(--ink)]">
             {rows.length
@@ -461,7 +472,10 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
           <section className="flex h-[min(42svh,22rem)] min-h-[11rem] w-full shrink-0 flex-col overflow-hidden rounded-2xl border-2 border-[var(--ink)]/25 bg-[var(--paper-2)] shadow-sm md:h-full md:min-h-0 md:w-[22rem] md:flex-none xl:w-[26rem]">
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2">
               <p className="min-w-0 flex-1 truncate text-sm text-[var(--muted)]">{resultsHeadline(rows.length, totalMatched)}</p>
-              {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
+              <div className="flex shrink-0 items-center gap-2">
+                {regrading ? <span className="text-xs text-[var(--muted)]">Scoring…</span> : null}
+                <ShareLinkButton matrix={matrix} listings={rows.map((row) => row.listing)} />
+              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-3">
               <div className="space-y-3">
