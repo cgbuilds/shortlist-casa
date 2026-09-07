@@ -3,10 +3,10 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fold } from "@/components/Fold";
-import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_USED_KEY } from "@/components/ChatPanel";
+import { ChatPanel, CHAT_DISMISSED_KEY, CHAT_USED_KEY, LEGACY_CHAT_DISMISSED_KEY } from "@/components/ChatPanel";
+import { remainingAfterSearchNote } from "@/lib/chat-coach";
 import { ChatFab, ChatSheet } from "@/components/ChatSheet";
 import { ShareLinkButton } from "@/components/ShareLinkButton";
-import { MatrixPreview } from "@/components/MatrixPreview";
 import { PropertyCard } from "@/components/PropertyCard";
 import { RedfinUpload } from "@/components/RedfinUpload";
 import type { GradeResult, PropertyListing, UserMatrix } from "@/lib/types";
@@ -34,7 +34,8 @@ function confirmScoring(kind: "live" | "cache" | "score", data?: SearchResponse)
   const total = data.totalMatched ?? shown;
   const head = resultsHeadline(shown, total);
   if (kind === "live" && data.pulled) {
-    return `Done. Pulled live listings and scored them. ${head}.`;
+    const quotaNote = remainingAfterSearchNote(data.quota?.remaining);
+    return `Done. Pulled live listings and scored them. ${head}.${quotaNote ? ` ${quotaNote}` : ""}`;
   }
   if (kind === "live") return `Done. Scored the live cache. ${head}.`;
   if (kind === "cache") return `Done. Scored the current set. ${head}.`;
@@ -54,7 +55,7 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   const [cacheCount, setCacheCount] = useState(0);
   const [savedFilename, setSavedFilename] = useState<string | undefined>(undefined);
   const [savedCount, setSavedCount] = useState<number | undefined>(undefined);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const [showBanner, setShowBanner] = useState(true);
   const [regrading, setRegrading] = useState(false);
   const [scoreProgress, setScoreProgress] = useState<Pick<RankProgress, "analyzed" | "total" | "processing"> | null>(
@@ -62,7 +63,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   );
   const [job, setJob] = useState<{ tone: "err"; text: string } | null>(null);
   const [actionNotice, setActionNotice] = useState<{ id: number; text: string } | null>(null);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [needListHint, setNeedListHint] = useState(false);
   const [hasOwnList, setHasOwnList] = useState(false);
   const [chatUsed, setChatUsed] = useState(false);
@@ -85,7 +85,6 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
   }, []);
   const closeChat = useCallback(() => {
     setChatOpen(false);
-    setKeyboardOpen(false);
     try {
       window.sessionStorage.setItem(CHAT_DISMISSED_KEY, "1");
     } catch {
@@ -110,10 +109,18 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
       if (welcome === "1" || shared === "1") {
         window.history.replaceState({}, "", "/app");
       }
-      if (shared === "1") setFromShare(true);
-      setChatOpen(false);
+      if (shared === "1") {
+        setFromShare(true);
+        setChatOpen(false);
+      } else {
+        const dismissed =
+          window.sessionStorage.getItem(CHAT_DISMISSED_KEY) === "1" ||
+          window.sessionStorage.getItem(LEGACY_CHAT_DISMISSED_KEY) === "1";
+        setChatOpen(!dismissed);
+        if (!dismissed) setBounceChat(false);
+      }
     } catch {
-      setChatOpen(false);
+      setChatOpen(true);
     }
     const html = document.documentElement;
     const body = document.body;
@@ -497,28 +504,11 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
                 ) : null}
               </div>
             </div>
-          </section>
-        </div>
-      </div>
-
-      <ChatSheet open={chatOpen} onClose={closeChat} onKeyboard={setKeyboardOpen}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <ChatPanel
-          matrix={matrix}
-          remaining={remaining}
-          userLimit={userLimit}
-          scoreProgress={scoreProgress}
-          actionNotice={actionNotice}
-          onChatEvent={onChatEvent}
-          onClose={closeChat}
-          invite={!chatUsed}
-          onTalked={() => setChatUsed(true)}
-          extra={
-            keyboardOpen ? null : (
-              <div className="max-h-[min(10rem,28svh)] shrink-0 overflow-y-auto overscroll-contain border-t border-[var(--line)]">
+            <div className="shrink-0 overflow-y-auto border-t border-[var(--line)]">
+              <Fold title="Upload a Redfin CSV" titleClassName="px-3 text-sm text-[var(--muted)]">
                 <RedfinUpload
                   compact
-                  heading="Actions"
+                  heading="Or pull a live search from chat"
                   matrix={matrix}
                   liveSearch={liveSearch}
                   signupUrl={signupUrl}
@@ -552,16 +542,25 @@ export function Workspace({ initialMatrix }: { initialMatrix: UserMatrix }) {
                     });
                   }}
                 />
-                <div className="border-t border-[var(--line)] px-3 pb-3">
-                  <Fold title="Your must-haves" titleClassName="text-sm text-[var(--muted)]">
-                    <div className="max-h-40 overflow-y-auto">
-                      <MatrixPreview matrix={matrix} />
-                    </div>
-                  </Fold>
-                </div>
-              </div>
-            )
-          }
+              </Fold>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <ChatSheet open={chatOpen} onClose={closeChat}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <ChatPanel
+          matrix={matrix}
+          remaining={remaining}
+          userLimit={userLimit}
+          scoreProgress={scoreProgress}
+          actionNotice={actionNotice}
+          onChatEvent={onChatEvent}
+          onClose={closeChat}
+          invite={!chatUsed}
+          autoFocus={!chatUsed}
+          onTalked={() => setChatUsed(true)}
         />
         </div>
       </ChatSheet>

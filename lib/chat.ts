@@ -5,29 +5,40 @@ import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { WHY_GRADE_INSTRUCTIONS } from "@/lib/grade";
 import { queryFromMatrix } from "@/lib/rentcast";
 import { wantsRescore } from "@/lib/chat-intent";
+import {
+  EXAMPLE_CRITERIA,
+  nextCoachQuestion,
+  poolPreference,
+  searchSpendGuidance,
+  shouldAutoSearch,
+} from "@/lib/chat-coach";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 
-export const SYSTEM_PROMPT = `You are a home-buying coach for Shortlist (default: they want to **buy**, not rent). Users score listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
+export const SYSTEM_PROMPT = `You are a home-buying coach for Shortlist (default: they want to **buy**, not rent). Keep the chat like a shopping assistant: short, one question at a time, then search. Users score listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
 Never say "matrix" to the user — say must-haves or home profile. Never say Homestead.
 
-You may add a manual rubric for qualitative extras.
+You may add a manual rubric for qualitative extras (pool, a *great* coffee shop).
 
 LOOKING TO BUY vs RENT: Default intent is buy. Live search uses for-sale listings. Only call set_budget intent "rent" if they clearly want to rent. Switching buy↔rent needs a new live pull (confirm first). Recap "Looking to buy" or "Looking to rent". For rent, maxPrice is monthly rent, not a purchase price.
 
-BASELINE FIRST — do not skip this, and do not commit until baseline is complete:
+SHOPPING FLOW:
+- If they dump area / beds / baths / type / budget in one note, apply it. Example they may copy: ${EXAMPLE_CRITERIA}.
+- While they are still filling that in, ask ONE preference they have not answered — e.g. "Want a pool, or are you okay with no pool?" Garage and walkability are good follow-ups. Do not interrogate with a long list.
+- Pool: add_manual_rubric label "Pool" if they want one (mustHave only if they say must/dealbreaker). If they say it doesn't matter or they're okay without one, do not require a pool.
+- When baseline is complete and they said search / that's it / dumped a full note, call commit_matrix and run_live_search with confirm true for the **first** pull (empty cache).
+- Do not auto-spend the 2nd or 3rd pull. Call preview_live_search, then wait for an explicit search. When a search runs, tell them how many they have left and that they should change something more critical (budget, beds, or area) to refine the next batch.
+
+BASELINE FIRST:
 1. General area. If they name cities (St. Petersburg, Clearwater, Valrico), put those in locationAllowlist and set searchArea to the primary city + state (e.g. "St. Petersburg, FL") — not Tampa — unless they actually asked for Tampa. Live search follows the named cities. Only use searchArea "Tampa, FL" with an empty allowlist when they want the whole Tampa metro. Never copy a default neighborhood list.
 2. Minimum bedrooms (set_dimension id beds, enabled true, min, mustHave true)
 3. Minimum bathrooms (set_dimension id baths)
 4. Property type (set_dimension id property_type, prefs.prefer one of townhouse | sfr | condo | multi)
-
-After baseline is saved, ask: "Any custom must-haves?" and only then enable add-ons.
 
 SOFT / SUBJECTIVE GATES (score these — do not set mustHave unless the user says must / dealbreaker / hard no):
 - neighborhood_vibe prefs.prefer local_center = walkable local city-center (not sleepy, not a busy strip). mustHave false by default.
 - local_amenities prefs.requireCoffee / requireShops. mustHave false by default so missing OSM café data does not hide the whole list.
 - walkable: enabled, mustHave false.
 - flood vs flood_resilience: if they accept FEMA AE/VE, set flood prefs.acceptSfha true and mustHave false. Enable flood_resilience as the must-have. If they want to avoid flood zones, keep flood mustHave true.
-- add_manual_rubric for taste items (a *great* coffee shop)
 - Never set school_area mustHave true. set_budget already enables location scoring. Named cities filter the live search; they are not a silent cut on the list.
 
 If they dump everything in one message, apply baseline first, then add-ons.
@@ -35,19 +46,20 @@ If they dump everything in one message, apply baseline first, then add-ons.
 Do not keep Valrico, Brandon, Bloomingdale, or River Hills unless the user said those places.
 Format replies as markdown with **bold** labels and dash lists.
 Keep replies short. After tools, recap what is set and what baseline is still missing.
-When baseline is complete AND the user confirms, call commit_matrix. Tell them their must-haves are saved — never say matrix.
 
 ${WHY_GRADE_INSTRUCTIONS}
 
-LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention account-wide API request totals, HTTP call counts, or a 50-call/month cap. If live search is unavailable, tell them to rescore the cache, upload a Redfin CSV, or wait until next month. The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-scores the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a new pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Only call run_live_search with confirm true after they explicitly agree (e.g. "confirm live pull" / "use one of the three"). Show used/userLimit in your recap (never an account API counter).
+LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention account-wide API request totals, HTTP call counts, or a 50-call/month cap. If live search is unavailable, tell them to rescore the cache, upload a Redfin CSV, or wait until next month. The listing cache never expires. Tightening beds/price or changing coffee/vibe/drainage re-scores the cache for free. Widening area, type, beds, baths, or max price needs a new pull. Always call preview_live_search before recommending a 2nd/3rd pull. Quote coveragePct (e.g. 90% of cached homes still match) and the workarounds. Recommend NOT spending a pull when coverage is high. Show used/userLimit in your recap (never an account API counter).
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
 const RECAP_PROMPT = `You are a home-buying coach for Shortlist. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
 Never say "matrix". Say must-haves or home profile. Never say Homestead.
-Reply in short markdown: **bold** labels and dash lists.
-Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
-Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API request totals.`;
+Reply in short markdown: **bold** labels and dash lists. Keep it like a shopping chat: recap, then ONE question or a search note.
+If baseline is missing (area, beds, baths, property type), say what's missing and give this example: ${EXAMPLE_CRITERIA}.
+If they are still writing criteria, ask one preference they have not answered (pool vs okay with no pool, garage, walkability).
+If a live search is running or already applied, tell them how many live searches they have left and that they should change something more critical (budget, beds, or area) before the next pull to get more refined results.
+Do not claim you searched MLS. Live search is a pull (3 per user). Never mention account-wide API request totals.`;
 
 export type { ChatMessage } from "@/lib/types";
 
@@ -228,6 +240,10 @@ async function runMatrixChatInner(
                 content: `Applied: ${applied.reply}\nProfile: ${JSON.stringify(recapProfile(applied.matrix))}${
                   liveAdvice
                     ? `\nLive searches ${liveAdvice.used}/${liveAdvice.userLimit} used, ${liveAdvice.remaining} left.`
+                    : ""
+                }${
+                  applied.livePull
+                    ? `\nA live search is running. ${searchSpendGuidance(liveAdvice?.remaining ?? 3)}`
                     : ""
                 }`,
               },
@@ -480,6 +496,19 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     notes.push("Prefer condo.");
   }
 
+  const pool = poolPreference(userText);
+  if (pool === "optional") {
+    notes.push("Pool is optional — homes without one are fine.");
+  } else if (pool === "must" || pool === "prefer") {
+    const rub = applyTool(working, "add_manual_rubric", { label: "Pool", weight: pool === "must" ? 8 : 6 });
+    working = rub.matrix;
+    notes.push(
+      pool === "must"
+        ? "Pool is on your list as a must-have to score."
+        : "I'll treat a pool as a preference, not a dealbreaker."
+    );
+  }
+
   if (text.includes("garage")) {
     const applied = applyTool(working, "set_dimension", { id: "garage", enabled: true, mustHave: text.includes("must") });
     working = applied.matrix;
@@ -704,15 +733,32 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     }
   }
 
+  if (userId && !livePull && !liveSearch && shouldAutoSearch(working, userText, getLiveQuota(userId).used)) {
+    const applied = applyTool(working, "run_live_search", { confirm: true }, { userId });
+    livePull = Boolean(applied.livePull);
+    liveSearch = Boolean(applied.liveSearch);
+    const advice = applied.result as { advice?: string; remaining?: number };
+    if (livePull) {
+      commit = true;
+      notes.push(searchSpendGuidance(advice.remaining ?? 3));
+    } else if (liveSearch) {
+      notes.push(advice.advice ?? "Scoring the current set — no new live search needed.");
+    } else {
+      notes.push(advice.advice ?? "Checking live-search quota.");
+    }
+  }
+
+  if (livePull && !notes.some((n) => /live search(?:es)? left/i.test(n))) {
+    const remaining = userId ? getLiveQuota(userId).remaining : 3;
+    notes.push(searchSpendGuidance(remaining));
+  }
+
   if (notes.length === 0) {
-    const missing = baselineStatus(working)
-      .gaps.filter((g) => !g.done)
-      .map((g) => g.label);
-    notes.push(
-      missing.length
-        ? `Need baseline first: ${missing.join(", ")}. Example: Tampa, FL · 3 bed · 2 bath · single-family. Then add custom must-haves.`
-        : "Baseline is set. Add custom must-haves, or say commit when ready."
-    );
+    const question = nextCoachQuestion(working, userText, history);
+    notes.push(question || `Example: ${EXAMPLE_CRITERIA}`);
+  } else if (!livePull) {
+    const question = nextCoachQuestion(working, userText, history);
+    if (question && !notes.some((n) => n.includes(question))) notes.push(question);
   }
 
   const matrixChanged = JSON.stringify(previewMatrix(working)) !== before;

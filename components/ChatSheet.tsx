@@ -92,14 +92,14 @@ export function ChatSheet({
       />
       <div
         role="dialog"
-        aria-label="Tell Chat your must-haves"
+        aria-label="Chat"
         aria-modal="true"
         className={`relative z-10 flex w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-[var(--paper-2)] shadow-xl sm:h-[min(36rem,calc(100svh-3rem))] sm:max-h-[calc(100svh-3rem)] sm:w-[26rem] sm:rounded-2xl sm:pt-0 ${
           keyboard ? "h-full max-h-full pt-0" : "h-[92%] max-h-full pt-[env(safe-area-inset-top)]"
         }`}
       >
         <div className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
-          <p className="text-base font-medium">Tell Chat your must-haves</p>
+          <p className="text-base font-medium">Chat</p>
           <button
             type="button"
             className="inline-flex min-h-11 min-w-[4.5rem] items-center justify-center rounded-xl bg-[var(--ink)] px-4 text-base font-medium text-[var(--paper)]"

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 import { ChatMarkdown, ChatStatus } from "@/components/ChatMarkdown";
 import { wantsRescore, looksLikeCriteria } from "@/lib/chat-intent";
+import { EXAMPLE_CRITERIA, WELCOME_MESSAGE, composerHint } from "@/lib/chat-coach";
 
 export const CHAT_STORAGE_KEY = "shortlist-chat-messages";
 export const CHAT_DISMISSED_KEY = "shortlist-chat-dismissed";
@@ -11,13 +12,7 @@ export const LEGACY_CHAT_DISMISSED_KEY = "homestead-chat-dismissed";
 export const CHAT_USED_KEY = "shortlist-chat-used";
 const LEGACY_CHAT_STORAGE_KEY = "homestead-chat-messages";
 
-const DEFAULT_MESSAGES: ChatMessage[] = [
-  {
-    role: "assistant",
-    content:
-      "You’re looking at a sample Tampa list (3 bed, 2 bath, single-family). Tell me your must-haves — area, beds, budget, type. If those sample homes don’t fit, they come off the map and you’ll upload a Redfin Favorites CSV or run a live search.",
-  },
-];
+const DEFAULT_MESSAGES: ChatMessage[] = [{ role: "assistant", content: WELCOME_MESSAGE }];
 
 function abortAfter(ms: number) {
   const ac = new AbortController();
@@ -69,6 +64,7 @@ export function ChatPanel({
   extra,
   invite = false,
   onTalked,
+  autoFocus = false,
 }: {
   matrix: UserMatrix;
   onChatEvent: (event: {
@@ -85,14 +81,15 @@ export function ChatPanel({
   extra?: ReactNode;
   invite?: boolean;
   onTalked?: () => void;
+  autoFocus?: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(DEFAULT_MESSAGES);
   const [hydrated, setHydrated] = useState(false);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
-  const [committed, setCommitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const talkedRef = useRef(false);
   const [inviting, setInviting] = useState(invite);
 
@@ -141,7 +138,15 @@ export function ChatPanel({
     }
   }, [messages, hydrated]);
 
+  useEffect(() => {
+    if (!autoFocus || !hydrated) return;
+    const id = window.setTimeout(() => composer.current?.focus(), 250);
+    return () => window.clearTimeout(id);
+  }, [autoFocus, hydrated]);
+
   const lastFailed = useRef<string | null>(null);
+  const showExample = !talkedRef.current && messages.every((m) => m.role === "assistant");
+  const hint = composerHint(text, matrix, { draftOnlyBaseline: inviting });
 
   async function postChat(text: string, history: ChatMessage[]) {
     const gate = abortAfter(45_000);
@@ -233,7 +238,6 @@ export function ChatPanel({
       lastFailed.current = null;
       const reply = data.reply ?? "Updated.";
       setMessages([...history, { role: "assistant", content: reply }]);
-      if (data.commit) setCommitted(true);
       setPending(false);
       const rescore =
         Boolean(data.rescore) || Boolean(data.matrixChanged) || wantsRescore(next) || looksLikeCriteria(next);
@@ -269,27 +273,6 @@ export function ChatPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-none border-0 bg-transparent">
-      <div className="border-b border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
-        {remaining != null ? (
-          <>
-            Live searches{" "}
-            <span className="text-[var(--ink)]">
-              {Math.max(0, userLimit - remaining)}/{userLimit}
-            </span>
-          </>
-        ) : (
-          <>Live searches {userLimit}/user</>
-        )}
-        {scoreProgress && scoreProgress.total > 0 ? (
-          <>
-            {" · "}
-            <span className="text-[var(--ink)]">
-              {scoreProgress.analyzed}/{scoreProgress.total} scored
-            </span>
-            {scoreProgress.processing > 0 ? `, ${scoreProgress.processing} processing…` : ""}
-          </>
-        ) : null}
-      </div>
       <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.map((m, i) => (
           <div
@@ -314,9 +297,10 @@ export function ChatPanel({
             ) : null}
           </p>
         ) : null}
-        {committed ? (
-          <p className="text-xs text-[var(--accent)]">
-            Must-haves saved. The map and list will rescore.
+        {scoreProgress && scoreProgress.total > 0 ? (
+          <p className="text-xs text-[var(--muted)]">
+            {scoreProgress.analyzed}/{scoreProgress.total} scored
+            {scoreProgress.processing > 0 ? `, ${scoreProgress.processing} processing…` : ""}
           </p>
         ) : null}
       </div>
@@ -330,7 +314,20 @@ export function ChatPanel({
           void send();
         }}
       >
+        {showExample ? (
+          <button
+            type="button"
+            className="mb-2 rounded-full border border-[var(--line)] px-3 py-1 text-xs text-[var(--muted)]"
+            onClick={() => {
+              setText(EXAMPLE_CRITERIA);
+              composer.current?.focus();
+            }}
+          >
+            Use example
+          </button>
+        ) : null}
         <textarea
+          ref={composer}
           value={text}
           name="mustHaveNote"
           autoComplete="off"
@@ -357,12 +354,13 @@ export function ChatPanel({
             e.preventDefault();
             if (!pending) void send();
           }}
-          placeholder="Area, beds, budget, home type…"
+          placeholder={EXAMPLE_CRITERIA}
           rows={2}
           className={`w-full rounded-xl border bg-[var(--paper)] px-3 py-2 text-base ${
             inviting ? "chat-composer-pulse border-[var(--accent)]" : "border-[var(--line)]"
           }`}
         />
+        <p className="mt-1.5 text-xs text-[var(--muted)]">{hint}</p>
         <div className="mt-2 flex gap-2">
           {onClose ? (
             <button
@@ -381,6 +379,11 @@ export function ChatPanel({
             {pending ? "On it…" : "Send"}
           </button>
         </div>
+        {remaining != null ? (
+          <p className="sr-only">
+            Live searches {Math.max(0, userLimit - remaining)}/{userLimit}
+          </p>
+        ) : null}
       </form>
     </div>
   );
