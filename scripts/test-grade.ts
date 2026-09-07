@@ -15,6 +15,7 @@ import { canReusePull, decideLivePull, liveQueryKey, rememberLivePull, adviseLiv
 import { outboundListingLinks } from "../lib/outbound-links";
 import { starterMatrix } from "../lib/starter-profile";
 import { wantsRescore, looksLikeCriteria } from "../lib/chat-intent";
+import { composerHint, searchSpendGuidance, shouldAutoSearch } from "../lib/chat-coach";
 import { sanitizeListings, parseStoredSession, isOwnListSource } from "../lib/listings-payload";
 import { sampleListingFits } from "../lib/sample-fit";
 import { radiusBounds, SEARCH_RADIUS_MILES } from "../lib/geo";
@@ -354,6 +355,32 @@ async function main() {
   assert(!isOwnListSource("cache"), "regrade cache is not automatically an own list");
   assert(!isOwnListSource("redfin-favorites"), "bundled sample is not an own list");
   assert(!isOwnListSource("saved", "starter-tampa.csv"), "starter CSV is not an own list");
+
+  assert(composerHint("", defaultMatrix()).includes("Example"), "empty composer shows the example");
+  assert(/bedroom/i.test(composerHint("Tampa, FL", defaultMatrix())), "partial note hints the next field");
+  assert(/pool/i.test(composerHint("Tampa, FL · 3 bed · 2 bath · house under $400k", defaultMatrix())), "full note hints pool");
+  assert(/two live searches left/i.test(searchSpendGuidance(3)), "first search warns two remain");
+  assert(shouldAutoSearch(starterMatrix(), "Tampa, FL 3 bed 2 bath house", 0), "first complete dump searches");
+  assert(!shouldAutoSearch(starterMatrix(), "maybe a pool", 0), "preference-only does not search");
+  assert(!shouldAutoSearch(starterMatrix(), "Tampa, FL 3 bed 2 bath house", 1), "later dumps do not auto-spend");
+  assert(shouldAutoSearch(starterMatrix(), "search now", 1), "saying search still runs a later pull");
+
+  resetLiveQuotaForTests();
+  const dumpSearch = await runMatrixChat(
+    defaultMatrix(),
+    [],
+    "Tampa, FL 3 bed 2 bath single-family under $450k",
+    { userId: "coach-search-user" }
+  );
+  assert(dumpSearch.livePull, "full dump runs the first live search");
+  assert(/two live searches left/i.test(dumpSearch.reply), "search recap mentions two remaining");
+  const optionalPool = await runMatrixChat(defaultMatrix(), [], "okay with no pool");
+  assert(
+    !optionalPool.matrix.manualRubrics.some((r) => /pool/i.test(r.label)),
+    "okay with no pool does not add a pool rubric"
+  );
+  const preferPool = await runMatrixChat(defaultMatrix(), [], "a pool would be nice");
+  assert(preferPool.matrix.manualRubrics.some((r) => /pool/i.test(r.label)), "pool preference is saved");
 
   const box = radiusBounds(27.95, -82.46, SEARCH_RADIUS_MILES);
   assert(box[0][0] < 27.95 && box[1][0] > 27.95, "20-mile radius spans north/south");
