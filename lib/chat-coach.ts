@@ -119,11 +119,15 @@ const COMPOSER_HINTS: Array<{ id: keyof DraftBits | "ready"; hint: string; when:
   },
 ];
 
-export function composerHint(draft: string, matrix: UserMatrix) {
+export function composerHint(draft: string, matrix: UserMatrix, opts?: { draftOnlyBaseline?: boolean }) {
   if (!draft.trim()) {
     return `Example: ${EXAMPLE_CRITERIA}`;
   }
-  const bits = draftBits(draft, matrix);
+  const fromDraft = draftBits(draft);
+  const fromBoth = draftBits(draft, matrix);
+  const bits = opts?.draftOnlyBaseline
+    ? { ...fromBoth, area: fromDraft.area, beds: fromDraft.beds, baths: fromDraft.baths, type: fromDraft.type, budget: fromDraft.budget }
+    : fromBoth;
   return COMPOSER_HINTS.find((h) => h.when(bits))?.hint ?? "";
 }
 

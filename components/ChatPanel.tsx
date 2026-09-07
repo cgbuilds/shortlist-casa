@@ -146,7 +146,7 @@ export function ChatPanel({
 
   const lastFailed = useRef<string | null>(null);
   const showExample = !talkedRef.current && messages.every((m) => m.role === "assistant");
-  const hint = composerHint(text, matrix);
+  const hint = composerHint(text, matrix, { draftOnlyBaseline: inviting });
 
   async function postChat(text: string, history: ChatMessage[]) {
     const gate = abortAfter(45_000);

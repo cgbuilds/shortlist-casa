@@ -358,6 +358,10 @@ async function main() {
 
   assert(composerHint("", defaultMatrix()).includes("Example"), "empty composer shows the example");
   assert(/bedroom/i.test(composerHint("Tampa, FL", defaultMatrix())), "partial note hints the next field");
+  assert(
+    /bedroom/i.test(composerHint("Tampa, FL", starterMatrix(), { draftOnlyBaseline: true })),
+    "first-visit typing ignores the starter profile so the example still teaches beds"
+  );
   assert(/pool/i.test(composerHint("Tampa, FL · 3 bed · 2 bath · house under $400k", defaultMatrix())), "full note hints pool");
   assert(/two live searches left/i.test(searchSpendGuidance(3)), "first search warns two remain");
   assert(shouldAutoSearch(starterMatrix(), "Tampa, FL 3 bed 2 bath house", 0), "first complete dump searches");
