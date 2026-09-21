@@ -3,37 +3,11 @@ import { displayCityName, normalizePlaceName } from "@/kb/catalog";
 export const SCHOOL_POINT_RADIUS_MILES = 8;
 export const NEIGHBORHOOD_RADIUS_MILES = 10;
 
-const TOWN_N_COUNTRY = /\btown\s*(?:['’]n['’]|n|and|&)\s*country\b/i;
-
-const NAMED_PLACES: Array<[RegExp, string]> = [
-  [TOWN_N_COUNTRY, "Town N Country"],
-  [/\bbloomingdale\b/i, "Bloomingdale"],
-  [/\briver hills\b/i, "River Hills"],
-  [/\bvalrico\b/i, "Valrico"],
-  [/\bbrandon\b/i, "Brandon"],
-  [/\bst\.?\s*pete(?:rsburg)?\b/i, "St. Petersburg"],
-  [/\bclearwater\b/i, "Clearwater"],
-  [/\blithia\b/i, "Lithia"],
-  [/\briverview\b/i, "Riverview"],
-  [/\bwestchase\b/i, "Westchase"],
-  [/\bcarrollwood\b/i, "Carrollwood"],
-];
-
-const LOCAL_RADIUS_PLACES = new Set(
-  [
-    "town n country",
-    "westchase",
-    "carrollwood",
-    "citrus park",
-    "bloomingdale",
-    "river hills",
-    "fishhawk",
-    "fishhawk / lithia",
-  ].map((p) => normalizePlaceName(p))
-);
-
 const SCHOOL_POINT =
   /\b([A-Za-z][A-Za-z0-9 .'-]{0,40}?(?:preparatory(?: school)?|prep(?:aratory)?(?: school)?|high school|elementary(?: school)?|middle school|academy))\b/i;
+
+const GENERIC_IN =
+  /\bis in\s+([A-Za-z0-9][A-Za-z0-9 .''&-]{1,40}?)(?:\s+so\b|[.,]|$)/i;
 
 export type ParsedSearchLocation = {
   searchArea: string;
@@ -69,53 +43,48 @@ export function extractSearchPoint(text: string): string {
   return name;
 }
 
-export function extractNamedPlaces(text: string): string[] {
-  const named: string[] = [];
-  for (const [re, label] of NAMED_PLACES) {
-    if (re.test(text)) named.push(label);
+function extractMentionedPlace(text: string): string {
+  const inPlace = text.match(GENERIC_IN);
+  if (inPlace) {
+    const name = titleCasePlace(inPlace[1]);
+    if (!/^(that area|the area|town|the neighborhood|a flood zone|flood)$/i.test(name)) return name;
   }
-  return named;
+  const citySt = text.match(/\b([A-Za-z][A-Za-z .']{1,40}),\s*(FL|Florida|TX|CA|GA|NC|SC|AL|TN)\b/i);
+  if (citySt) {
+    const st = citySt[2].toUpperCase() === "FLORIDA" ? "FL" : citySt[2].toUpperCase();
+    return `${citySt[1].trim()}, ${st}`;
+  }
+  if (/\btampa\b/i.test(text)) return "Tampa, FL";
+  return "";
 }
 
+/** Neighborhoods/CDPs use a short radius; named metros stay wide. Not a place dictionary. */
 export function usesLocalRadius(place: string) {
-  return LOCAL_RADIUS_PLACES.has(normalizePlaceName(place.replace(/,.*$/, "")));
+  const n = normalizePlaceName(place.replace(/,.*$/, ""));
+  if (!n) return false;
+  if (/^(tampa|orlando|miami|jacksonville|st petersburg|clearwater)$/.test(n)) return false;
+  return true;
 }
 
 export function parseSearchLocation(userText: string): ParsedSearchLocation | null {
   const searchZip = extractSearchZip(userText);
   const searchPoint = extractSearchPoint(userText);
-  const namedPlaces = extractNamedPlaces(userText);
+  const mentioned = extractMentionedPlace(userText);
 
   let searchArea = "";
-  const citySt = userText.match(/\b([A-Za-z][A-Za-z .']{1,40}),\s*(FL|Florida|TX|CA|GA|NC|SC|AL|TN)\b/i);
-  if (citySt && !TOWN_N_COUNTRY.test(citySt[1])) {
-    const st = citySt[2].toUpperCase() === "FLORIDA" ? "FL" : citySt[2].toUpperCase();
-    searchArea = `${citySt[1].trim()}, ${st}`;
-  } else if (namedPlaces.some((p) => /petersburg|clearwater/i.test(p))) {
-    const primary =
-      namedPlaces.find((p) => /petersburg/i.test(p)) ??
-      namedPlaces.find((p) => /clearwater/i.test(p)) ??
-      namedPlaces[0];
-    searchArea = `${primary}, FL`;
-  } else if (/\btampa\b/i.test(userText) && !TOWN_N_COUNTRY.test(userText) && !searchPoint) {
-    searchArea = "Tampa, FL";
-  } else if (namedPlaces.length) {
-    searchArea = `${namedPlaces[0]}, FL`;
-  } else if (searchPoint) {
-    searchArea = `${searchPoint}, FL`;
-  } else if (searchZip) {
-    searchArea = searchZip;
-  }
+  if (mentioned.includes(",")) searchArea = mentioned;
+  else if (mentioned) searchArea = `${mentioned}, FL`;
+  else if (searchPoint) searchArea = `${searchPoint}, FL`;
+  else if (searchZip) searchArea = searchZip;
 
   if (!searchArea && !searchZip && !searchPoint) return null;
 
-  const metroCity = searchArea.split(",")[0]?.trim().toLowerCase() ?? "";
-  const locationAllowlist = namedPlaces.filter((p) => {
-    const n = p.toLowerCase();
-    return n !== metroCity && !usesLocalRadius(p);
-  });
-
-  return { searchArea, locationAllowlist, searchZip, searchPoint };
+  return {
+    searchArea,
+    locationAllowlist: [],
+    searchZip,
+    searchPoint,
+  };
 }
 
 export function formatSearchAddress(opts: {

@@ -4,6 +4,7 @@ import { adviseLiveSearch, grantCourtesySearch, getLiveQuota, isPoliteExtraSearc
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { WHY_GRADE_INSTRUCTIONS } from "@/lib/grade";
 import { queryFromMatrix } from "@/lib/rentcast";
+import { applyChatPatch, parseChatPatchJson } from "@/lib/chat-patch";
 import { wantsRescore } from "@/lib/chat-intent";
 import { parseSearchLocation } from "@/lib/search-location";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
@@ -45,11 +46,24 @@ LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention acc
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
-const RECAP_PROMPT = `You are a home-buying coach for Shortlist. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
+const INTERPRET_PROMPT = `You interpret home-search must-haves for Shortlist. OpenRouter is the interpreter. The built-in parser is only a fallback.
 Never say "matrix". Say must-haves or home profile. Never say Homestead.
-Reply in short markdown: **bold** labels and dash lists.
-Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
-Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API request totals.`;
+Return ONLY JSON (no markdown besides the reply string):
+{
+  "patch": {
+    "searchArea": string | null,
+    "searchZip": string | null,
+    "searchPoint": string | null,
+    "locationAllowlist": string[] | null
+  },
+  "reply": "short markdown recap with **bold** labels and dash lists"
+}
+Rules for patch (this is the crib — the set_budget schema — not a place dictionary):
+- Include a field only when this user message changes it. null means unchanged. "" or [] clears it.
+- ZIP code → searchZip. School or landmark used as a center → searchPoint (never put the school in locationAllowlist). Neighborhood/CDP → searchArea (e.g. "Town N Country, FL"). Named cities → locationAllowlist.
+- If they change area, ZIP, or school point, replace leftover neighborhoods (pass locationAllowlist [] unless they still named those cities).
+- Do not invent Valrico, Brandon, Bloomingdale, or River Hills.
+- Recap the profile AFTER the patch. Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API totals.`;
 
 export type { ChatMessage } from "@/lib/types";
 
@@ -217,39 +231,47 @@ async function runMatrixChatInner(
     };
   }
 
-  // OpenRouter Auto (and similar) cannot reliably tool-call. Built-in parser applies
-  // must-haves; the model is primary for the user-facing recap.
+  // OpenRouter Auto cannot reliably tool-call. Ask it for a JSON patch against the
+  // set_budget crib, apply that, then use its recap. The keyword parser is fallback.
   if (!usesToolCalling(llm.model)) {
     try {
-      const recap = await withTimeout(10_000, (signal) =>
+      const interpreted = await withTimeout(10_000, (signal) =>
         llm.client.chat.completions.create(
           {
             model: llm.model,
             messages: [
-              { role: "system", content: RECAP_PROMPT },
+              { role: "system", content: INTERPRET_PROMPT },
               {
                 role: "system",
-                content: `Applied: ${applied.reply}\nProfile: ${JSON.stringify(recapProfile(applied.matrix))}${
+                content: `Fallback parser: ${applied.reply}\nProfile: ${JSON.stringify(recapProfile(applied.matrix))}${
                   liveAdvice
                     ? `\nLive searches ${liveAdvice.used}/${liveAdvice.userLimit} used, ${liveAdvice.remaining} left.`
                     : ""
                 }`,
               },
+              ...history.slice(-8).map((m) => ({ role: m.role, content: m.content }) as const),
               { role: "user", content: userText },
             ],
           },
           { signal }
         )
       );
-      const reply = recap.choices[0]?.message?.content?.trim();
+      const raw = interpreted.choices[0]?.message?.content?.trim() || "";
+      const parsed = parseChatPatchJson(raw);
+      const next = parsed?.patch ? applyChatPatch(applied.matrix, parsed.patch) : applied.matrix;
+      const matrixChanged = JSON.stringify(previewMatrix(next)) !== JSON.stringify(previewMatrix(matrix));
+      const reply = parsed?.reply || (raw && !raw.trim().startsWith("{") ? raw : "") || applied.reply;
       return {
         ...applied,
-        reply: reply || applied.reply,
-        usedModel: Boolean(reply),
+        reply,
+        matrix: next,
+        matrixChanged,
+        rescore: (wantsRescore(userText) || matrixChanged) && !applied.livePull,
+        usedModel: Boolean(parsed?.reply || raw),
         provider: llm.provider,
         model: llm.model,
         label: info.label,
-        toolRounds: 0,
+        toolRounds: parsed?.patch ? 1 : 0,
         elapsedMs: Date.now() - started,
       };
     } catch {

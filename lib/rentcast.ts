@@ -159,12 +159,6 @@ export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
     return query;
   }
   if (named.length === 1) {
-    if (usesLocalRadius(named[0])) {
-      query.address = `${displayCityName(named[0])}, ${state}`;
-      query.radius = NEIGHBORHOOD_RADIUS_MILES;
-      query.state = state;
-      return query;
-    }
     query.city = displayCityName(named[0]);
     query.state = state;
     return query;

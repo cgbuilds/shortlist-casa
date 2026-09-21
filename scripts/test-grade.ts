@@ -4,6 +4,7 @@ import { join } from "path";
 import { defaultMatrix } from "../kb/catalog";
 import { SEED_LISTINGS } from "../data/listings";
 import { runMatrixChat } from "../lib/chat";
+import { applyChatPatch, parseChatPatchJson } from "../lib/chat-patch";
 import { bandFor, grade, gradeCaption, explainGrade, takeTopListings, wordCount } from "../lib/grade";
 import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
@@ -343,6 +344,15 @@ async function main() {
   const bothQ = queryFromMatrix(bothChat.matrix);
   assert(bothQ.address && /berkeley prep/i.test(bothQ.address) && bothQ.address.includes("33615"), `school+zip address, got ${bothQ.address}`);
   assert(bothQ.radius === 8, "school + zip still searches a radius around the school");
+
+  const llmShaped = parseChatPatchJson(
+    '{"patch":{"searchArea":"Town N Country, FL","searchZip":"33615","searchPoint":"Berkeley Prep","locationAllowlist":[]},"reply":"**Area** Town N Country"}'
+  );
+  assert(llmShaped?.patch.searchPoint === "Berkeley Prep", "OpenRouter JSON patch is the crib");
+  const fromLlm = applyChatPatch(priorArea, llmShaped!.patch);
+  assert(/town n country/i.test(fromLlm.searchArea), "LLM patch moves the area");
+  assert(fromLlm.searchZip === "33615", "LLM patch sets ZIP");
+  assert(fromLlm.locationAllowlist.length === 0, "LLM patch clears leftover cities");
 
   const starter = starterMatrix();
   assert(starter.searchArea === "Tampa, FL", "starter area is Tampa");
