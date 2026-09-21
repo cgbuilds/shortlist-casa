@@ -5,6 +5,7 @@ import { defaultMatrix } from "../kb/catalog";
 import { SEED_LISTINGS } from "../data/listings";
 import { runMatrixChat } from "../lib/chat";
 import { applyChatPatch, parseChatPatchJson } from "../lib/chat-patch";
+import { parseSearchLocation } from "../lib/search-location";
 import { bandFor, grade, gradeCaption, explainGrade, takeTopListings, wordCount } from "../lib/grade";
 import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
@@ -321,13 +322,57 @@ async function main() {
     locationAllowlist: ["Valrico", "Brandon"],
     maxPrice: 750000,
   }).matrix;
+  const commute = await runMatrixChat(
+    priorArea,
+    [],
+    "I have a budget of $750k and want to be 20 min max from Berkeley prep find me my best options I want at least 3 bed 2 bath and 2250 sq ft"
+  );
+  assert(commute.matrix.searchPoint === "Berkeley Prep", `commute point, got ${commute.matrix.searchPoint}`);
+  assert(/town n country/i.test(commute.matrix.searchArea), `commute area Town N Country, got ${commute.matrix.searchArea}`);
+  assert(!/want to be|and want/i.test(commute.matrix.searchPoint), "must not copy the sentence as the school name");
+  assert(commute.matrix.searchRadiusMiles >= 12 && commute.matrix.searchRadiusMiles <= 15, `20 min ≈ 13 miles, got ${commute.matrix.searchRadiusMiles}`);
+  assert(commute.matrix.dimensions.sqft.min === 2250, `sqft 2250 not 2500, got ${commute.matrix.dimensions.sqft.min}`);
+  const commuteQ = queryFromMatrix(commute.matrix);
+  assert(/berkeley preparatory school/i.test(commuteQ.address ?? "") && /town n country|tampa/i.test(commuteQ.address ?? ""), `live address ${commuteQ.address}`);
+  assert(commuteQ.radius === commute.matrix.searchRadiusMiles, "live radius follows 20 min");
+
+  const correction = await runMatrixChat(
+    commute.matrix,
+    [],
+    "That zip focal point is not right - it’s around Sebring but Berkeley prep is in town n country Tampa fl"
+  );
+  assert(/town n country/i.test(correction.matrix.searchArea), `correction area, got ${correction.matrix.searchArea}`);
+  assert(!/, FL, FL$/i.test(correction.matrix.searchArea), "no duplicate FL");
+  assert(correction.matrix.searchPoint === "Berkeley Prep", `correction point, got ${correction.matrix.searchPoint}`);
+  assert(!/sebring/i.test(correction.matrix.searchPoint + correction.matrix.searchArea), "rejected Sebring is not the center");
+
+  const district = await runMatrixChat(
+    correction.matrix,
+    [],
+    "I want to add that the house has to be in a elementary school district that is rated 8 or higher"
+  );
+  assert(district.matrix.searchPoint === "Berkeley Prep", `district must not steal the map center, got ${district.matrix.searchPoint}`);
+  assert(/town n country/i.test(district.matrix.searchArea), "district must not rewrite Town N Country");
+  assert(district.matrix.dimensions.school_rating.enabled, "school rating on");
+  assert(district.matrix.dimensions.school_rating.min === 8, "rating min 8");
+  const ratedUnknown = grade(
+    { ...sample, facts: { ...sample.facts, elementaryRating: null } },
+    district.matrix
+  );
+  assert(!ratedUnknown.mustHaveFailed, "missing GreatSchools data does not hide the list");
+
+  const parsedCommute = parseSearchLocation(
+    "I have a budget of $750k and want to be 20 min max from Berkeley prep find me my best options"
+  );
+  assert(parsedCommute?.searchPoint === "Berkeley Prep", "parser isolates Berkeley Prep");
+
   const aroundSchool = await runMatrixChat(priorArea, [], "Berkeley prep is in town n country so around that area");
   assert(/town n country/i.test(aroundSchool.matrix.searchArea), `area should move to Town N Country, got ${aroundSchool.matrix.searchArea}`);
   assert(/berkeley prep/i.test(aroundSchool.matrix.searchPoint), `school should be the search point, got ${aroundSchool.matrix.searchPoint}`);
   assert(!aroundSchool.matrix.locationAllowlist.includes("Valrico"), "old Valrico focus is replaced");
   assert(!aroundSchool.matrix.locationAllowlist.includes("Brandon"), "old Brandon focus is replaced");
   const schoolQ = queryFromMatrix(aroundSchool.matrix);
-  assert(schoolQ.address && /berkeley prep/i.test(schoolQ.address), `live search centers on the school, got ${schoolQ.address}`);
+  assert(schoolQ.address && /berkeley/i.test(schoolQ.address), `live search centers on the school, got ${schoolQ.address}`);
   assert(schoolQ.radius === 8, `school point uses a local radius, got ${schoolQ.radius}`);
   assert(!canReusePull(queryFromMatrix(priorArea), schoolQ), "moving the search center needs a new live pull");
 
@@ -342,7 +387,7 @@ async function main() {
   assert(bothChat.matrix.searchZip === "33615", "school + zip keeps the ZIP");
   assert(/berkeley prep/i.test(bothChat.matrix.searchPoint), "school + zip keeps the school point");
   const bothQ = queryFromMatrix(bothChat.matrix);
-  assert(bothQ.address && /berkeley prep/i.test(bothQ.address) && bothQ.address.includes("33615"), `school+zip address, got ${bothQ.address}`);
+  assert(bothQ.address && /berkeley/i.test(bothQ.address) && bothQ.address.includes("33615"), `school+zip address, got ${bothQ.address}`);
   assert(bothQ.radius === 8, "school + zip still searches a radius around the school");
 
   const llmShaped = parseChatPatchJson(
@@ -353,6 +398,12 @@ async function main() {
   assert(/town n country/i.test(fromLlm.searchArea), "LLM patch moves the area");
   assert(fromLlm.searchZip === "33615", "LLM patch sets ZIP");
   assert(fromLlm.locationAllowlist.length === 0, "LLM patch clears leftover cities");
+  const garbage = applyChatPatch(priorArea, {
+    searchArea: "To Add That The House Has To Be In A Elementary School, FL",
+    searchPoint: "And Want To Be 20 Min Max From Berkeley Prep",
+  });
+  assert(garbage.searchPoint === "Berkeley Prep", `garbage sentence is cleaned to the school, got ${garbage.searchPoint}`);
+  assert(!/elementary school/i.test(garbage.searchArea), "district sentence is not an area");
 
   const starter = starterMatrix();
   assert(starter.searchArea === "Tampa, FL", "starter area is Tampa");

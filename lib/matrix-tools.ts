@@ -29,6 +29,7 @@ export function ensureMatrix(input?: Partial<UserMatrix> | null): UserMatrix {
     searchArea: legacy ? "" : (input.searchArea ?? base.searchArea),
     searchZip: legacy ? "" : (input.searchZip ?? base.searchZip),
     searchPoint: legacy ? "" : (input.searchPoint ?? base.searchPoint),
+    searchRadiusMiles: legacy ? 0 : (input.searchRadiusMiles ?? base.searchRadiusMiles),
     intent: input.intent === "rent" ? "rent" : "buy",
     budget: { ...base.budget, ...input.budget },
     dimensions: { ...base.dimensions, ...input.dimensions },
@@ -73,6 +74,7 @@ export function setBudget(
     searchArea?: string;
     searchZip?: string;
     searchPoint?: string;
+    searchRadiusMiles?: number;
     intent?: ListingIntent;
   }
 ): UserMatrix {
@@ -82,6 +84,7 @@ export function setBudget(
     searchArea,
     searchZip,
     searchPoint,
+    searchRadiusMiles,
     intent,
     ...budgetPatch
   } = patch;
@@ -105,6 +108,12 @@ export function setBudget(
           : matrix.searchZip || "",
     searchPoint:
       searchPoint !== undefined ? String(searchPoint).trim().slice(0, 80) : areaChanged ? "" : matrix.searchPoint || "",
+    searchRadiusMiles:
+      searchRadiusMiles != null && Number.isFinite(Number(searchRadiusMiles))
+        ? Math.min(40, Math.max(0, Number(searchRadiusMiles)))
+        : areaChanged
+          ? 0
+          : matrix.searchRadiusMiles || 0,
     intent: intent === "rent" || intent === "buy" ? intent : matrix.intent,
     budget: { ...matrix.budget, ...budgetPatch },
     locationAllowlist,
@@ -135,6 +144,7 @@ export function previewMatrix(matrix: UserMatrix) {
     searchArea: matrix.searchArea,
     searchZip: matrix.searchZip,
     searchPoint: matrix.searchPoint,
+    searchRadiusMiles: matrix.searchRadiusMiles,
     intent: matrix.intent,
     baseline: baselineStatus(matrix),
     budget: matrix.budget,
@@ -191,7 +201,8 @@ export const CHAT_TOOLS = [
         properties: {
           searchArea: { type: "string", description: "Metro / general area, e.g. Tampa, FL or Town N Country, FL" },
           searchZip: { type: "string", description: "5-digit ZIP to search. Replaces the previous ZIP. Empty string clears it." },
-          searchPoint: { type: "string", description: "School or landmark used as the live-search radius center, e.g. Berkeley Prep. Empty string clears it." },
+          searchPoint: { type: "string", description: "Short school/landmark name only (e.g. Berkeley Prep). Never a sentence." },
+          searchRadiusMiles: { type: "number", description: "Radius in miles around the school/area. Convert 20 minutes to ~13 miles." },
           intent: { type: "string", enum: ["buy", "rent"], description: "buy = for-sale listings (default). rent = long-term rentals. Switching needs a new live pull." },
           maxPrice: { type: "number" },
           maxPitia: { type: "number" },
@@ -301,6 +312,7 @@ export function applyTool(
           searchArea?: string;
           searchZip?: string;
           searchPoint?: string;
+          searchRadiusMiles?: number;
           unknownPolicy?: UnknownPolicy;
           intent?: ListingIntent;
         }
@@ -312,6 +324,7 @@ export function applyTool(
           searchArea: next.searchArea,
           searchZip: next.searchZip,
           searchPoint: next.searchPoint,
+          searchRadiusMiles: next.searchRadiusMiles,
           intent: next.intent,
           locationAllowlist: next.locationAllowlist,
           budget: next.budget,

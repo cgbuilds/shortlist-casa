@@ -1,6 +1,6 @@
 import type { CatalogDimension, UserMatrix } from "@/lib/types";
 
-export const CATALOG_VERSION = "1.3.0";
+export const CATALOG_VERSION = "1.4.0";
 
 export const SCHOOL_AREA_OPTIONS = [
   "Bloomingdale HS",
@@ -272,6 +272,18 @@ export const CATALOG: CatalogDimension[] = [
     allowedKnobs: ["enabled", "weight", "mustHave", "label"],
   },
   {
+    id: "school_rating",
+    cluster: "location",
+    defaultLabel: "School rating",
+    description: "Minimum GreatSchools-style rating for the elementary district. Live listings usually lack this; unknown does not hide the home.",
+    requiredFields: ["facts.elementaryRating"],
+    enrichable: true,
+    defaultEnabled: false,
+    defaultWeight: 8,
+    defaultKnobs: { enabled: false, weight: 8, min: 8, mustHave: false },
+    allowedKnobs: ["enabled", "weight", "min", "mustHave", "label"],
+  },
+  {
     id: "walkable",
     cluster: "location",
     defaultLabel: "Walkable location",
@@ -376,6 +388,7 @@ export function defaultMatrix(): UserMatrix {
     searchArea: "",
     searchZip: "",
     searchPoint: "",
+    searchRadiusMiles: 0,
     intent: "buy",
     budget: {
       downPaymentPct: 5,

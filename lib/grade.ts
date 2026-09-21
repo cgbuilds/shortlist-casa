@@ -496,6 +496,25 @@ function evaluateDimension(
         reason: `Est. PITIA $${pitia.toLocaleString()}/mo, slack $${slack.toLocaleString()}`,
       };
     }
+    case "school_rating": {
+      const min = knobs.min ?? 8;
+      const rating = listing.facts.elementaryRating;
+      if (rating == null) {
+        return {
+          id,
+          ...unknownScore(matrix, `Elementary rating unknown (need ${min}+)`),
+          mustHaveFailed: false,
+        };
+      }
+      const ok = rating >= min;
+      return {
+        id,
+        score: ok ? 100 : 20,
+        unknown: false,
+        mustHaveFailed: !!knobs.mustHave && !ok,
+        reason: ok ? `Elementary rating ${rating} (min ${min})` : `Elementary rating ${rating} is below ${min}`,
+      };
+    }
     case "school_area": {
       const parsed = parseSearchArea(matrix.searchArea || "");
       if (parsed.state && listing.state && listing.state.toUpperCase() !== parsed.state) {

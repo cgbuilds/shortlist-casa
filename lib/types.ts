@@ -22,6 +22,7 @@ export type PropertyFacts = {
   hoa?: boolean | null;
   cdd?: boolean | null;
   schoolArea?: string | null;
+  elementaryRating?: number | null;
   countyJustValue?: number | null;
   failedPending?: boolean | null;
   priceCutCount?: number | null;
@@ -102,6 +103,8 @@ export type UserMatrix = {
   searchZip: string;
   /** School or address used as a radius center (optional). */
   searchPoint: string;
+  /** Live-search radius in miles when searchPoint or a local area is set. 0 = default. */
+  searchRadiusMiles: number;
   /** Default buy. Rent is optional — live search uses a different feed. */
   intent: ListingIntent;
   budget: BudgetSettings;

@@ -148,7 +148,7 @@ export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
       searchZip: zip,
       state,
     });
-    query.radius = SCHOOL_POINT_RADIUS_MILES;
+    query.radius = matrix.searchRadiusMiles > 0 ? matrix.searchRadiusMiles : SCHOOL_POINT_RADIUS_MILES;
     query.state = state;
     if (zip) query.zip = zip;
     return query;

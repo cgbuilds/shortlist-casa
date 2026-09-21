@@ -54,14 +54,19 @@ Return ONLY JSON (no markdown besides the reply string):
     "searchArea": string | null,
     "searchZip": string | null,
     "searchPoint": string | null,
+    "searchRadiusMiles": number | null,
     "locationAllowlist": string[] | null
   },
   "reply": "short markdown recap with **bold** labels and dash lists"
 }
 Rules for patch (this is the crib — the set_budget schema — not a place dictionary):
 - Include a field only when this user message changes it. null means unchanged. "" or [] clears it.
-- ZIP code → searchZip. School or landmark used as a center → searchPoint (never put the school in locationAllowlist). Neighborhood/CDP → searchArea (e.g. "Town N Country, FL"). Named cities → locationAllowlist.
-- If they change area, ZIP, or school point, replace leftover neighborhoods (pass locationAllowlist [] unless they still named those cities).
+- ZIP → searchZip. School/landmark CENTER → searchPoint as a 1–3 word name only (e.g. "Berkeley Prep"). NEVER paste a sentence into searchPoint or searchArea.
+- Neighborhood/CDP → searchArea ("Town N Country, FL"). Do not write "..., FL, FL". Named cities → locationAllowlist.
+- "20 min from Berkeley Prep" → searchPoint "Berkeley Prep", searchRadiusMiles 13 (0.65 miles/min), searchArea Town N Country if they named it, else Town N Country, FL when the school is Berkeley Prep.
+- If they say a prior zip/city is wrong ("not Sebring, Berkeley Prep is in Town N Country Tampa") use the correction, ignore the rejected place.
+- School DISTRICT RATINGS ("elementary rated 8+") are not a map center. Do not change searchArea/searchPoint for that.
+- If they change area, ZIP, or school point, pass locationAllowlist [] unless they still named those cities.
 - Do not invent Valrico, Brandon, Bloomingdale, or River Hills.
 - Recap the profile AFTER the patch. Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API totals.`;
 
@@ -142,6 +147,7 @@ function recapProfile(matrix: UserMatrix) {
     searchArea: matrix.searchArea,
     searchZip: matrix.searchZip,
     searchPoint: matrix.searchPoint,
+    searchRadiusMiles: matrix.searchRadiusMiles,
     intent: matrix.intent,
     places: matrix.locationAllowlist,
     maxPrice: matrix.budget.maxPrice,
@@ -455,10 +461,14 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     );
   }
 
-  if (/\b(2500|2,500)\b/.test(text) || text.includes("sq ft") || text.includes("sqft")) {
-    const applied = applyTool(working, "set_dimension", { id: "sqft", enabled: true, min: 2500 });
+  const sqftMatch =
+    userText.match(/(\d{1,2},?\d{3})\s*(?:sq\.?\s*ft|sqft|sf|square feet)\b/i) ||
+    userText.match(/\b(\d{3,4})\s*(?:sq\.?\s*ft|sqft|sf)\b/i);
+  if (sqftMatch || /\b(2500|2,500)\b/.test(text)) {
+    const minSqft = sqftMatch ? Number(sqftMatch[1].replace(/,/g, "")) : 2500;
+    const applied = applyTool(working, "set_dimension", { id: "sqft", enabled: true, min: minSqft });
     working = applied.matrix;
-    notes.push("Living area floor set to 2500 sf.");
+    notes.push(`Living area floor set to ${minSqft.toLocaleString()} sf.`);
   }
 
   const bedMatch = text.match(/(\d)\s*\+?\s*bed/) || text.match(/bed(?:room)?s?\s*(\d)\s*\+?/);
@@ -487,7 +497,7 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     text.includes("single family") ||
     text.includes("single-family") ||
     text.includes("sfr") ||
-    /\bhouse\b/.test(text)
+    /\b(?:want a |prefer a |looking for a )houses?\b/.test(text)
   ) {
     const applied = applyTool(working, "set_dimension", {
       id: "property_type",
@@ -621,15 +631,32 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
       locationAllowlist: place.locationAllowlist,
       searchZip: place.searchZip,
       searchPoint: place.searchPoint,
+      ...(place.searchRadiusMiles ? { searchRadiusMiles: place.searchRadiusMiles } : {}),
     });
     working = applied.matrix;
     const bits = [
       place.searchArea ? `area ${place.searchArea}` : "",
       place.searchPoint ? `centered on ${place.searchPoint}` : "",
+      place.searchRadiusMiles ? `${place.searchRadiusMiles} miles` : "",
       place.searchZip ? `ZIP ${place.searchZip}` : "",
       place.locationAllowlist.length ? `focus ${place.locationAllowlist.join(", ")}` : "",
     ].filter(Boolean);
     notes.push(`Search updated: ${bits.join(" · ")}.`);
+  }
+
+  const rating = userText.match(/\brated\s+(\d(?:\.\d)?)\s*or\s*higher|\b(\d)\s*\+\s*(?:on\s+)?(?:great ?schools|rating)/i);
+  if (rating && /school|elementary|district/i.test(text)) {
+    const min = Number(rating[1] || rating[2] || 8);
+    const applied = applyTool(working, "set_dimension", {
+      id: "school_rating",
+      enabled: true,
+      min,
+      mustHave: true,
+    });
+    working = applied.matrix;
+    notes.push(
+      `Elementary district ${min}+ is a must-have. Live listings do not include GreatSchools ratings — check it on the property; this does not move the map.`
+    );
   }
 
   if (text.includes("slack") || text.includes("payment") || text.includes("pitia")) {
@@ -732,6 +759,7 @@ function mustHaveLine(matrix: UserMatrix) {
   const bits = [
     matrix.searchArea ? `Area: ${matrix.searchArea}` : "",
     matrix.searchPoint ? `Near: ${matrix.searchPoint}` : "",
+    matrix.searchRadiusMiles ? `${matrix.searchRadiusMiles} mi radius` : "",
     matrix.searchZip ? `ZIP: ${matrix.searchZip}` : "",
     matrix.locationAllowlist.length ? `Places: ${matrix.locationAllowlist.join(", ")}` : "",
     matrix.budget.maxPrice ? `Cap: $${matrix.budget.maxPrice.toLocaleString()}` : "",
