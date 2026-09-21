@@ -16,5 +16,5 @@ export function starterMatrix(): UserMatrix {
 }
 
 export function isBlankProfile(matrix: UserMatrix) {
-  return !matrix.searchArea?.trim();
+  return !matrix.searchArea?.trim() && !matrix.searchZip?.trim() && !matrix.searchPoint?.trim();
 }

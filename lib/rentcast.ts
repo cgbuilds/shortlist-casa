@@ -1,4 +1,5 @@
 import { displayCityName, normalizePlaceName, parseSearchArea } from "@/kb/catalog";
+import { formatSearchAddress, SCHOOL_POINT_RADIUS_MILES, NEIGHBORHOOD_RADIUS_MILES, usesLocalRadius } from "@/lib/search-location";
 import { findRedfinListing } from "@/lib/redfin-csv";
 import { SEED_LISTINGS, slugAddress } from "@/data/listings";
 import { RENTCAST_CAP_MESSAGE, reserveRentcastCall, withGlobalQueue } from "@/lib/listing-cache";
@@ -125,7 +126,9 @@ export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
   const prefer = matrix.dimensions.property_type?.enabled
     ? String(matrix.dimensions.property_type.prefs?.prefer ?? "")
     : "";
-  const named = matrix.locationAllowlist.filter((a) => a.trim() && !/\bhs\b/i.test(a));
+  const named = matrix.locationAllowlist.filter(
+    (a) => a.trim() && !/\bhs\b/i.test(a) && !/prep(?:aratory)?|high school|academy/i.test(a)
+  );
   const query: SearchQuery = {
     status: "Active",
     market: marketFromIntent(matrix.intent),
@@ -135,7 +138,26 @@ export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
     maxPrice: matrix.budget.maxPrice,
     propertyType: RC_PROPERTY_TYPE[prefer],
   };
+  const zip = (matrix.searchZip || "").replace(/\D/g, "").slice(0, 5);
+  const point = (matrix.searchPoint || "").trim();
   const state = parsed.state || "FL";
+  if (point) {
+    query.address = formatSearchAddress({
+      searchPoint: point,
+      searchArea: matrix.searchArea,
+      searchZip: zip,
+      state,
+    });
+    query.radius = SCHOOL_POINT_RADIUS_MILES;
+    query.state = state;
+    if (zip) query.zip = zip;
+    return query;
+  }
+  if (zip) {
+    query.zip = zip;
+    query.state = state;
+    return query;
+  }
   if (named.length === 1) {
     query.city = displayCityName(named[0]);
     query.state = state;
@@ -149,9 +171,14 @@ export function queryFromMatrix(matrix: UserMatrix): SearchQuery {
     query.state = state;
     return query;
   }
+  if (parsed.city && /^\d{5}$/.test(parsed.city)) {
+    query.zip = parsed.city;
+    query.state = parsed.state || "FL";
+    return query;
+  }
   if (parsed.city && parsed.state) {
     query.address = `${parsed.city}, ${parsed.state}`;
-    query.radius = 22;
+    query.radius = usesLocalRadius(parsed.city) ? NEIGHBORHOOD_RADIUS_MILES : 22;
     query.state = parsed.state;
     return query;
   }
@@ -224,7 +251,7 @@ function filterSeed(query: SearchQuery): PropertyListing[] {
     if (listingMarket({ ...l, market: l.market ?? "sale" }) !== market) return false;
     if (query.city && !l.city.toLowerCase().includes(query.city.toLowerCase())) return false;
     if (query.state && l.state.toLowerCase() !== query.state.toLowerCase()) return false;
-    if (query.zip && l.zip !== query.zip) return false;
+    if (query.zip && !query.radius && l.zip !== query.zip) return false;
     if (query.minBeds && (l.beds ?? 0) < query.minBeds) return false;
     if (query.minBaths && (l.baths ?? 0) < query.minBaths) return false;
     if (query.minSqft && (l.sqft ?? 0) < query.minSqft) return false;

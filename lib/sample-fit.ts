@@ -12,7 +12,7 @@ function haystack(listing: PropertyListing) {
   return norm(`${listing.city} ${listing.state} ${listing.neighborhood ?? ""} ${listing.address} ${listing.zip ?? ""}`);
 }
 
-const TAMPA_METRO = /\b(tampa|valrico|lithia|brandon|riverview|bloomingdale|plant city|seffner|dover)\b/;
+const TAMPA_METRO = /\b(tampa|valrico|lithia|brandon|riverview|bloomingdale|plant city|seffner|dover|town n country|westchase|carrollwood)\b/;
 
 /** Strict fit check for the bundled sample list only — not for a live or uploaded set. */
 export function sampleListingFits(
@@ -23,7 +23,9 @@ export function sampleListingFits(
   if (grade?.mustHaveFailed) return false;
 
   const hay = haystack(listing);
-  if (matrix.locationAllowlist.length) {
+  if (matrix.searchZip) {
+    if (listing.zip && listing.zip !== matrix.searchZip) return false;
+  } else if (matrix.locationAllowlist.length) {
     const hit = matrix.locationAllowlist.some((place) => {
       const p = norm(place);
       return p.length >= 3 && (hay.includes(p) || p.includes(norm(listing.city)));

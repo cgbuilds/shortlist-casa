@@ -98,6 +98,10 @@ export type UserMatrix = {
   catalogVersion: string;
   unknownPolicy: UnknownPolicy;
   searchArea: string;
+  /** USPS ZIP used as the live-search center (optional). */
+  searchZip: string;
+  /** School or address used as a radius center (optional). */
+  searchPoint: string;
   /** Default buy. Rent is optional — live search uses a different feed. */
   intent: ListingIntent;
   budget: BudgetSettings;

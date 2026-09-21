@@ -507,19 +507,36 @@ function evaluateDimension(
           reason: `${listing.city}, ${listing.state} is outside ${matrix.searchArea}`,
         };
       }
+      if (matrix.searchZip && listing.zip) {
+        const ok = listing.zip === matrix.searchZip;
+        return {
+          id,
+          score: ok ? 100 : 25,
+          unknown: false,
+          mustHaveFailed: false,
+          reason: ok
+            ? `ZIP ${listing.zip} matches ${matrix.searchZip}`
+            : `${listing.zip} is outside ZIP ${matrix.searchZip}`,
+        };
+      }
       const area = listing.facts.schoolArea || listing.city;
       if (!area && matrix.locationAllowlist.length) {
         return { id, ...unknownScore(matrix, "School area unknown"), mustHaveFailed: !!knobs.mustHave };
       }
       if (matrix.locationAllowlist.length === 0) {
+        const near = matrix.searchPoint
+          ? ` near ${matrix.searchPoint}`
+          : "";
         return {
           id,
           score: 100,
           unknown: false,
           mustHaveFailed: false,
           reason: matrix.searchArea
-            ? `${listing.city} is in ${matrix.searchArea}`
-            : "No neighborhood filter",
+            ? `${listing.city} is in ${matrix.searchArea}${near}`
+            : matrix.searchPoint
+              ? `${listing.city} is scored around ${matrix.searchPoint}`
+              : "No neighborhood filter",
         };
       }
       const hay = `${area} ${listing.city} ${listing.neighborhood ?? ""}`;

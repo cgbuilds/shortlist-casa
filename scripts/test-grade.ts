@@ -4,6 +4,7 @@ import { join } from "path";
 import { defaultMatrix } from "../kb/catalog";
 import { SEED_LISTINGS } from "../data/listings";
 import { runMatrixChat } from "../lib/chat";
+import { applyChatPatch, parseChatPatchJson } from "../lib/chat-patch";
 import { bandFor, grade, gradeCaption, explainGrade, takeTopListings, wordCount } from "../lib/grade";
 import { applyTool, ensureMatrix } from "../lib/matrix-tools";
 import { parseAddressFromInput } from "../lib/parse-address";
@@ -315,6 +316,44 @@ async function main() {
   const rentChat = await runMatrixChat(matrix, [], "I want to rent a condo");
   assert(rentChat.matrix.intent === "rent", "chat can switch to rent");
 
+  const priorArea = applyTool(matrix, "set_budget", {
+    searchArea: "Bloomingdale, FL",
+    locationAllowlist: ["Valrico", "Brandon"],
+    maxPrice: 750000,
+  }).matrix;
+  const aroundSchool = await runMatrixChat(priorArea, [], "Berkeley prep is in town n country so around that area");
+  assert(/town n country/i.test(aroundSchool.matrix.searchArea), `area should move to Town N Country, got ${aroundSchool.matrix.searchArea}`);
+  assert(/berkeley prep/i.test(aroundSchool.matrix.searchPoint), `school should be the search point, got ${aroundSchool.matrix.searchPoint}`);
+  assert(!aroundSchool.matrix.locationAllowlist.includes("Valrico"), "old Valrico focus is replaced");
+  assert(!aroundSchool.matrix.locationAllowlist.includes("Brandon"), "old Brandon focus is replaced");
+  const schoolQ = queryFromMatrix(aroundSchool.matrix);
+  assert(schoolQ.address && /berkeley prep/i.test(schoolQ.address), `live search centers on the school, got ${schoolQ.address}`);
+  assert(schoolQ.radius === 8, `school point uses a local radius, got ${schoolQ.radius}`);
+  assert(!canReusePull(queryFromMatrix(priorArea), schoolQ), "moving the search center needs a new live pull");
+
+  const zipChat = await runMatrixChat(priorArea, [], "update the search zip to 33615");
+  assert(zipChat.matrix.searchZip === "33615", `zip should update, got ${zipChat.matrix.searchZip}`);
+  const zipQ = queryFromMatrix(zipChat.matrix);
+  assert(zipQ.zip === "33615", "live search uses the ZIP");
+  assert(zipQ.radius == null, "ZIP-only search is not a metro radius");
+  assert(!canReusePull(queryFromMatrix(priorArea), zipQ), "a new ZIP needs a new live pull");
+
+  const bothChat = await runMatrixChat(priorArea, [], "Use Berkeley Prep as the point and zip 33615");
+  assert(bothChat.matrix.searchZip === "33615", "school + zip keeps the ZIP");
+  assert(/berkeley prep/i.test(bothChat.matrix.searchPoint), "school + zip keeps the school point");
+  const bothQ = queryFromMatrix(bothChat.matrix);
+  assert(bothQ.address && /berkeley prep/i.test(bothQ.address) && bothQ.address.includes("33615"), `school+zip address, got ${bothQ.address}`);
+  assert(bothQ.radius === 8, "school + zip still searches a radius around the school");
+
+  const llmShaped = parseChatPatchJson(
+    '{"patch":{"searchArea":"Town N Country, FL","searchZip":"33615","searchPoint":"Berkeley Prep","locationAllowlist":[]},"reply":"**Area** Town N Country"}'
+  );
+  assert(llmShaped?.patch.searchPoint === "Berkeley Prep", "OpenRouter JSON patch is the crib");
+  const fromLlm = applyChatPatch(priorArea, llmShaped!.patch);
+  assert(/town n country/i.test(fromLlm.searchArea), "LLM patch moves the area");
+  assert(fromLlm.searchZip === "33615", "LLM patch sets ZIP");
+  assert(fromLlm.locationAllowlist.length === 0, "LLM patch clears leftover cities");
+
   const starter = starterMatrix();
   assert(starter.searchArea === "Tampa, FL", "starter area is Tampa");
   assert(starter.dimensions.beds.min === 3, "starter beds 3");
@@ -344,6 +383,8 @@ async function main() {
   const awaiting = parseStoredSession(JSON.stringify({ listings: [], matrix: starterMatrix(), awaitingSearch: true, savedAt: 2 }));
   assert(awaiting.awaitingSearch === true, "awaitingSearch flag restores");
   assert(looksLikeCriteria("Orlando, FL 4 bed"), "criteria text is detected");
+  assert(looksLikeCriteria("Berkeley prep around town n country"), "school + neighborhood counts as criteria");
+  assert(looksLikeCriteria("search zip 33615"), "zip criteria is detected");
   const valrico = favorites.find((l) => l.city === "Valrico")!;
   const orlando = starterMatrix();
   orlando.searchArea = "Orlando, FL";

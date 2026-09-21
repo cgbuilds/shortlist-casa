@@ -4,7 +4,9 @@ import { adviseLiveSearch, grantCourtesySearch, getLiveQuota, isPoliteExtraSearc
 import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { WHY_GRADE_INSTRUCTIONS } from "@/lib/grade";
 import { queryFromMatrix } from "@/lib/rentcast";
+import { applyChatPatch, parseChatPatchJson } from "@/lib/chat-patch";
 import { wantsRescore } from "@/lib/chat-intent";
+import { parseSearchLocation } from "@/lib/search-location";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
 
 export const SYSTEM_PROMPT = `You are a home-buying coach for Shortlist (default: they want to **buy**, not rent). Users score listings against their must-haves (also called their home profile). You ONLY configure scoring via tools. Never invent dimensions outside the catalog.
@@ -16,6 +18,7 @@ LOOKING TO BUY vs RENT: Default intent is buy. Live search uses for-sale listing
 
 BASELINE FIRST — do not skip this, and do not commit until baseline is complete:
 1. General area. If they name cities (St. Petersburg, Clearwater, Valrico), put those in locationAllowlist and set searchArea to the primary city + state (e.g. "St. Petersburg, FL") — not Tampa — unless they actually asked for Tampa. Live search follows the named cities. Only use searchArea "Tampa, FL" with an empty allowlist when they want the whole Tampa metro. Never copy a default neighborhood list.
+If they give a ZIP, set searchZip (replacing any previous ZIP) and search live by that ZIP. If they name a school or landmark as a point (Berkeley Prep, a high school), set searchPoint to that name and do **not** put the school in locationAllowlist — it is a radius center. Neighborhoods like Town N Country belong in searchArea, not as leftover Valrico/Brandon filters. Changing area, ZIP, or school point must replace the previous geography in the same set_budget call (pass empty strings/lists to clear).
 2. Minimum bedrooms (set_dimension id beds, enabled true, min, mustHave true)
 3. Minimum bathrooms (set_dimension id baths)
 4. Property type (set_dimension id property_type, prefs.prefer one of townhouse | sfr | condo | multi)
@@ -43,11 +46,24 @@ LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention acc
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
-const RECAP_PROMPT = `You are a home-buying coach for Shortlist. The app already applied the user's must-haves with a built-in parser — you do not configure scoring and you must not invent new criteria.
+const INTERPRET_PROMPT = `You interpret home-search must-haves for Shortlist. OpenRouter is the interpreter. The built-in parser is only a fallback.
 Never say "matrix". Say must-haves or home profile. Never say Homestead.
-Reply in short markdown: **bold** labels and dash lists.
-Recap what is set, what baseline is still missing (area, beds, baths, property type), and whether they should rescore the current list or confirm a live pull.
-Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API request totals.`;
+Return ONLY JSON (no markdown besides the reply string):
+{
+  "patch": {
+    "searchArea": string | null,
+    "searchZip": string | null,
+    "searchPoint": string | null,
+    "locationAllowlist": string[] | null
+  },
+  "reply": "short markdown recap with **bold** labels and dash lists"
+}
+Rules for patch (this is the crib — the set_budget schema — not a place dictionary):
+- Include a field only when this user message changes it. null means unchanged. "" or [] clears it.
+- ZIP code → searchZip. School or landmark used as a center → searchPoint (never put the school in locationAllowlist). Neighborhood/CDP → searchArea (e.g. "Town N Country, FL"). Named cities → locationAllowlist.
+- If they change area, ZIP, or school point, replace leftover neighborhoods (pass locationAllowlist [] unless they still named those cities).
+- Do not invent Valrico, Brandon, Bloomingdale, or River Hills.
+- Recap the profile AFTER the patch. Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API totals.`;
 
 export type { ChatMessage } from "@/lib/types";
 
@@ -124,6 +140,8 @@ function recapProfile(matrix: UserMatrix) {
     }));
   return {
     searchArea: matrix.searchArea,
+    searchZip: matrix.searchZip,
+    searchPoint: matrix.searchPoint,
     intent: matrix.intent,
     places: matrix.locationAllowlist,
     maxPrice: matrix.budget.maxPrice,
@@ -213,39 +231,47 @@ async function runMatrixChatInner(
     };
   }
 
-  // OpenRouter Auto (and similar) cannot reliably tool-call. Built-in parser applies
-  // must-haves; the model is primary for the user-facing recap.
+  // OpenRouter Auto cannot reliably tool-call. Ask it for a JSON patch against the
+  // set_budget crib, apply that, then use its recap. The keyword parser is fallback.
   if (!usesToolCalling(llm.model)) {
     try {
-      const recap = await withTimeout(10_000, (signal) =>
+      const interpreted = await withTimeout(10_000, (signal) =>
         llm.client.chat.completions.create(
           {
             model: llm.model,
             messages: [
-              { role: "system", content: RECAP_PROMPT },
+              { role: "system", content: INTERPRET_PROMPT },
               {
                 role: "system",
-                content: `Applied: ${applied.reply}\nProfile: ${JSON.stringify(recapProfile(applied.matrix))}${
+                content: `Fallback parser: ${applied.reply}\nProfile: ${JSON.stringify(recapProfile(applied.matrix))}${
                   liveAdvice
                     ? `\nLive searches ${liveAdvice.used}/${liveAdvice.userLimit} used, ${liveAdvice.remaining} left.`
                     : ""
                 }`,
               },
+              ...history.slice(-8).map((m) => ({ role: m.role, content: m.content }) as const),
               { role: "user", content: userText },
             ],
           },
           { signal }
         )
       );
-      const reply = recap.choices[0]?.message?.content?.trim();
+      const raw = interpreted.choices[0]?.message?.content?.trim() || "";
+      const parsed = parseChatPatchJson(raw);
+      const next = parsed?.patch ? applyChatPatch(applied.matrix, parsed.patch) : applied.matrix;
+      const matrixChanged = JSON.stringify(previewMatrix(next)) !== JSON.stringify(previewMatrix(matrix));
+      const reply = parsed?.reply || (raw && !raw.trim().startsWith("{") ? raw : "") || applied.reply;
       return {
         ...applied,
-        reply: reply || applied.reply,
-        usedModel: Boolean(reply),
+        reply,
+        matrix: next,
+        matrixChanged,
+        rescore: (wantsRescore(userText) || matrixChanged) && !applied.livePull,
+        usedModel: Boolean(parsed?.reply || raw),
         provider: llm.provider,
         model: llm.model,
         label: info.label,
-        toolRounds: 0,
+        toolRounds: parsed?.patch ? 1 : 0,
         elapsedMs: Date.now() - started,
       };
     } catch {
@@ -588,51 +614,22 @@ function heuristicChat(matrix: UserMatrix, userText: string, history: ChatMessag
     notes.push("Prefer block construction.");
   }
 
-  const namedPlaces: string[] = [];
-  const placeMap: Array<[RegExp, string]> = [
-    [/\bbloomingdale\b/i, "Bloomingdale HS"],
-    [/\briver hills\b/i, "River Hills"],
-    [/\bvalrico\b/i, "Valrico"],
-    [/\bbrandon\b/i, "Brandon"],
-    [/\bst\.?\s*pete(?:rsburg)?\b/i, "St. Petersburg"],
-    [/\bclearwater\b/i, "Clearwater"],
-    [/\blithia\b/i, "Lithia"],
-    [/\briverview\b/i, "Riverview"],
-  ];
-  for (const [re, label] of placeMap) {
-    if (re.test(userText)) namedPlaces.push(label);
-  }
-
-  let searchArea = "";
-  const citySt = userText.match(/\b([A-Za-z][A-Za-z .]{1,40}),\s*(FL|Florida|TX|CA|GA|NC|SC|AL|TN)\b/i);
-  if (citySt) {
-    const st = citySt[2].toUpperCase() === "FLORIDA" ? "FL" : citySt[2].toUpperCase();
-    searchArea = `${citySt[1].trim()}, ${st}`;
-  } else if (namedPlaces.some((p) => /petersburg|clearwater/i.test(p))) {
-    const primary = namedPlaces.find((p) => /petersburg/i.test(p)) ?? namedPlaces.find((p) => /clearwater/i.test(p)) ?? namedPlaces[0];
-    searchArea = `${primary}, FL`;
-  } else if (/\btampa\b/i.test(userText)) {
-    searchArea = "Tampa, FL";
-  } else if (namedPlaces.length) {
-    searchArea = `${namedPlaces[0].replace(/ HS$/, "")}, FL`;
-  }
-
-  if (searchArea) {
-    const metroCity = searchArea.split(",")[0]?.trim().toLowerCase() ?? "";
-    const allow = namedPlaces.filter((p) => {
-      const n = p.toLowerCase().replace(/ hs$/, "");
-      return n !== metroCity;
-    });
+  const place = parseSearchLocation(userText);
+  if (place) {
     const applied = applyTool(working, "set_budget", {
-      searchArea,
-      ...(allow.length ? { locationAllowlist: allow } : {}),
+      searchArea: place.searchArea,
+      locationAllowlist: place.locationAllowlist,
+      searchZip: place.searchZip,
+      searchPoint: place.searchPoint,
     });
     working = applied.matrix;
-    notes.push(
-      allow.length
-        ? `Search area set to ${searchArea} (focus: ${allow.join(", ")}).`
-        : `Search area set to ${searchArea}.`
-    );
+    const bits = [
+      place.searchArea ? `area ${place.searchArea}` : "",
+      place.searchPoint ? `centered on ${place.searchPoint}` : "",
+      place.searchZip ? `ZIP ${place.searchZip}` : "",
+      place.locationAllowlist.length ? `focus ${place.locationAllowlist.join(", ")}` : "",
+    ].filter(Boolean);
+    notes.push(`Search updated: ${bits.join(" · ")}.`);
   }
 
   if (text.includes("slack") || text.includes("payment") || text.includes("pitia")) {
@@ -734,6 +731,8 @@ function mustHaveLine(matrix: UserMatrix) {
   const enabled = Object.entries(matrix.dimensions).filter(([, d]) => d.enabled);
   const bits = [
     matrix.searchArea ? `Area: ${matrix.searchArea}` : "",
+    matrix.searchPoint ? `Near: ${matrix.searchPoint}` : "",
+    matrix.searchZip ? `ZIP: ${matrix.searchZip}` : "",
     matrix.locationAllowlist.length ? `Places: ${matrix.locationAllowlist.join(", ")}` : "",
     matrix.budget.maxPrice ? `Cap: $${matrix.budget.maxPrice.toLocaleString()}` : "",
     ...enabled.slice(0, 6).map(([id, d]) => `${d.label ?? id}${d.min != null ? ` ≥ ${d.min}` : ""}`),
