@@ -5,6 +5,7 @@ import { applyTool, CHAT_TOOLS, previewMatrix } from "@/lib/matrix-tools";
 import { WHY_GRADE_INSTRUCTIONS } from "@/lib/grade";
 import { queryFromMatrix } from "@/lib/rentcast";
 import { applyChatPatch, parseChatPatchJson } from "@/lib/chat-patch";
+import { INTERPRET_PROMPT } from "@/lib/chat-prompt";
 import { wantsRescore } from "@/lib/chat-intent";
 import { parseSearchLocation } from "@/lib/search-location";
 import type { ChatMessage, UserMatrix } from "@/lib/types";
@@ -46,30 +47,7 @@ LIVE SEARCH QUOTA (beta): 3 live searches per user this month. Never mention acc
 If they ask to score / rescore / run scoring the current list without a new live pull, say you will rescore now. After a live pull, the list is scored automatically — do not ask them to tap a score button.
 If they want more than 3 live searches, tell them to run scoring on the cache, upload a Redfin CSV, or wait until next month. Do not invent exceptions to the cap.`;
 
-const INTERPRET_PROMPT = `You interpret home-search must-haves for Shortlist. OpenRouter is the interpreter. The built-in parser is only a fallback.
-Never say "matrix". Say must-haves or home profile. Never say Homestead.
-Return ONLY JSON (no markdown besides the reply string):
-{
-  "patch": {
-    "searchArea": string | null,
-    "searchZip": string | null,
-    "searchPoint": string | null,
-    "searchRadiusMiles": number | null,
-    "locationAllowlist": string[] | null
-  },
-  "reply": "short markdown recap with **bold** labels and dash lists"
-}
-Rules for patch (this is the crib — the set_budget schema — not a place dictionary):
-- Include a field only when this user message changes it. null means unchanged. "" or [] clears it.
-- ZIP → searchZip. School/landmark CENTER → searchPoint as a 1–3 word name only (e.g. "Berkeley Prep"). NEVER paste a sentence into searchPoint or searchArea.
-- Neighborhood/CDP → searchArea ("Town N Country, FL"). Do not write "..., FL, FL". Named cities → locationAllowlist.
-- "20 min from Berkeley Prep" → searchPoint "Berkeley Prep", searchRadiusMiles 13 (0.65 miles/min), searchArea Town N Country if they named it, else Town N Country, FL when the school is Berkeley Prep.
-- If they say a prior zip/city is wrong ("not Sebring, Berkeley Prep is in Town N Country Tampa") use the correction, ignore the rejected place.
-- School DISTRICT RATINGS ("elementary rated 8+") are not a map center. Do not change searchArea/searchPoint for that.
-- If they change area, ZIP, or school point, pass locationAllowlist [] unless they still named those cities.
-- Do not invent Valrico, Brandon, Bloomingdale, or River Hills.
-- Recap the profile AFTER the patch. Do not claim you searched MLS. Live search is a separate confirmed pull (3 per user). Never mention account-wide API totals.`;
-
+export { INTERPRET_PROMPT } from "@/lib/chat-prompt";
 export type { ChatMessage } from "@/lib/types";
 
 type LlmClient = { client: OpenAI; model: string; provider: string };
@@ -223,9 +201,9 @@ async function runMatrixChatInner(
     };
   }
   const liveAdvice = opts?.userId ? adviseLiveSearch(opts.userId, queryFromMatrix(matrix)) : null;
-  const applied = heuristicChat(matrix, userText, history, opts?.userId);
   const llm = getLlmClient();
   if (!llm) {
+    const applied = heuristicChat(matrix, userText, history, opts?.userId);
     return {
       ...applied,
       provider: "heuristic",
@@ -237,11 +215,10 @@ async function runMatrixChatInner(
     };
   }
 
-  // OpenRouter Auto cannot reliably tool-call. Ask it for a JSON patch against the
-  // set_budget crib, apply that, then use its recap. The keyword parser is fallback.
+  // OpenRouter (including Auto): raw text + template → JSON crib. No keyword parser first.
   if (!usesToolCalling(llm.model)) {
     try {
-      const interpreted = await withTimeout(10_000, (signal) =>
+      const interpreted = await withTimeout(12_000, (signal) =>
         llm.client.chat.completions.create(
           {
             model: llm.model,
@@ -249,7 +226,7 @@ async function runMatrixChatInner(
               { role: "system", content: INTERPRET_PROMPT },
               {
                 role: "system",
-                content: `Fallback parser: ${applied.reply}\nProfile: ${JSON.stringify(recapProfile(applied.matrix))}${
+                content: `Current home profile: ${JSON.stringify(recapProfile(matrix))}${
                   liveAdvice
                     ? `\nLive searches ${liveAdvice.used}/${liveAdvice.userLimit} used, ${liveAdvice.remaining} left.`
                     : ""
@@ -264,16 +241,18 @@ async function runMatrixChatInner(
       );
       const raw = interpreted.choices[0]?.message?.content?.trim() || "";
       const parsed = parseChatPatchJson(raw);
-      const next = parsed?.patch ? applyChatPatch(applied.matrix, parsed.patch) : applied.matrix;
+      const next = parsed?.patch ? applyChatPatch(matrix, parsed.patch) : matrix;
       const matrixChanged = JSON.stringify(previewMatrix(next)) !== JSON.stringify(previewMatrix(matrix));
-      const reply = parsed?.reply || (raw && !raw.trim().startsWith("{") ? raw : "") || applied.reply;
+      const reply = parsed?.reply || (raw && !raw.trim().startsWith("{") ? raw : "") || "Updated your must-haves.";
       return {
-        ...applied,
         reply,
         matrix: next,
+        commit: Boolean(parsed?.commit),
+        livePull: Boolean(parsed?.livePull),
+        liveSearch: Boolean(parsed?.livePull),
         matrixChanged,
-        rescore: (wantsRescore(userText) || matrixChanged) && !applied.livePull,
-        usedModel: Boolean(parsed?.reply || raw),
+        rescore: (wantsRescore(userText) || matrixChanged) && !parsed?.livePull,
+        usedModel: Boolean(raw),
         provider: llm.provider,
         model: llm.model,
         label: info.label,
@@ -281,6 +260,7 @@ async function runMatrixChatInner(
         elapsedMs: Date.now() - started,
       };
     } catch {
+      const applied = heuristicChat(matrix, userText, history, opts?.userId);
       return {
         ...applied,
         provider: "heuristic",
@@ -311,10 +291,10 @@ async function runMatrixChatInner(
     { role: "user", content: userText },
   ];
 
-  let working = applied.matrix;
-  let commit = applied.commit;
-  let livePull = Boolean(applied.livePull);
-  let liveSearch = Boolean(applied.liveSearch);
+  let working = matrix;
+  let commit = false;
+  let livePull = false;
+  let liveSearch = false;
   let guard = 0;
   let toolRounds = 0;
   const before = JSON.stringify(previewMatrix(matrix));
@@ -383,6 +363,7 @@ async function runMatrixChatInner(
       elapsedMs: Date.now() - started,
     };
   } catch {
+    const applied = heuristicChat(matrix, userText, history, opts?.userId);
     return {
       ...applied,
       provider: "heuristic",

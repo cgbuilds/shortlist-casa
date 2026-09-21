@@ -333,7 +333,7 @@ async function main() {
   assert(commute.matrix.searchRadiusMiles >= 12 && commute.matrix.searchRadiusMiles <= 15, `20 min ≈ 13 miles, got ${commute.matrix.searchRadiusMiles}`);
   assert(commute.matrix.dimensions.sqft.min === 2250, `sqft 2250 not 2500, got ${commute.matrix.dimensions.sqft.min}`);
   const commuteQ = queryFromMatrix(commute.matrix);
-  assert(/berkeley preparatory school/i.test(commuteQ.address ?? "") && /town n country|tampa/i.test(commuteQ.address ?? ""), `live address ${commuteQ.address}`);
+  assert(/berkeley/i.test(commuteQ.address ?? "") && /town n country|tampa/i.test(commuteQ.address ?? ""), `live address ${commuteQ.address}`);
   assert(commuteQ.radius === commute.matrix.searchRadiusMiles, "live radius follows 20 min");
 
   const correction = await runMatrixChat(
@@ -402,8 +402,23 @@ async function main() {
     searchArea: "To Add That The House Has To Be In A Elementary School, FL",
     searchPoint: "And Want To Be 20 Min Max From Berkeley Prep",
   });
-  assert(garbage.searchPoint === "Berkeley Prep", `garbage sentence is cleaned to the school, got ${garbage.searchPoint}`);
-  assert(!/elementary school/i.test(garbage.searchArea), "district sentence is not an area");
+  assert(garbage.searchArea === priorArea.searchArea, "sentence-length area is not a valid crib field");
+  assert(!garbage.searchPoint, "sentence-length searchPoint is rejected, not regex-sliced");
+
+  const fromCrib = applyChatPatch(priorArea, {
+    searchArea: "Town N Country, FL",
+    searchPoint: "Berkeley Prep",
+    searchRadiusMiles: 13,
+    minBeds: 3,
+    minBaths: 2,
+    minSqft: 2250,
+    schoolRatingMin: 8,
+    locationAllowlist: [],
+  });
+  assert(fromCrib.searchPoint === "Berkeley Prep", "template JSON searchPoint is stored as returned");
+  assert(fromCrib.searchRadiusMiles === 13, "radius comes from the model crib");
+  assert(fromCrib.dimensions.sqft.min === 2250, "sqft from crib");
+  assert(fromCrib.dimensions.school_rating.min === 8, "school rating from crib");
 
   const starter = starterMatrix();
   assert(starter.searchArea === "Tampa, FL", "starter area is Tampa");

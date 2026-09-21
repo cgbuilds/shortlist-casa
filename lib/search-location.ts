@@ -171,16 +171,13 @@ export function formatSearchAddress(opts: {
   state?: string;
 }) {
   const state = opts.state || "FL";
+  const point = (opts.searchPoint || "").trim();
   const areaCity = (opts.searchArea || "").replace(/,\s*[A-Z]{2}$/i, "").trim();
   const areaIsZip = /^\d{5}$/.test(areaCity);
-  const point = opts.searchPoint ? cleanSearchPoint(opts.searchPoint) : "";
-  const areaForAddr = /berkeley prep/i.test(point) && (!areaCity || /berkeley prep/i.test(areaCity))
-    ? "Town N Country, Tampa"
-    : areaCity;
   const parts: string[] = [];
-  if (point) parts.push(/berkeley prep/i.test(point) ? "Berkeley Preparatory School" : point);
-  if (areaForAddr && !areaIsZip && areaForAddr.toLowerCase() !== point.toLowerCase()) {
-    parts.push(displayCityName(areaForAddr.replace(/\s+FL$/i, "").trim()));
+  if (point) parts.push(point);
+  if (areaCity && !areaIsZip && areaCity.toLowerCase() !== point.toLowerCase()) {
+    parts.push(displayCityName(areaCity.replace(/\s+FL$/i, "").trim()));
   }
   if (opts.searchZip) parts.push(opts.searchZip);
   else if (!parts.length && areaCity) parts.push(displayCityName(areaCity));
