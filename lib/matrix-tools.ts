@@ -27,6 +27,8 @@ export function ensureMatrix(input?: Partial<UserMatrix> | null): UserMatrix {
     ...input,
     catalogVersion: CATALOG_VERSION,
     searchArea: legacy ? "" : (input.searchArea ?? base.searchArea),
+    searchZip: legacy ? "" : (input.searchZip ?? base.searchZip),
+    searchPoint: legacy ? "" : (input.searchPoint ?? base.searchPoint),
     intent: input.intent === "rent" ? "rent" : "buy",
     budget: { ...base.budget, ...input.budget },
     dimensions: { ...base.dimensions, ...input.dimensions },
@@ -59,23 +61,50 @@ export function setDimension(
   };
 }
 
+function samePlace(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 export function setBudget(
   matrix: UserMatrix,
   patch: UserMatrix["budget"] & {
     unknownPolicy?: UnknownPolicy;
     locationAllowlist?: string[];
     searchArea?: string;
+    searchZip?: string;
+    searchPoint?: string;
     intent?: ListingIntent;
   }
 ): UserMatrix {
-  const { unknownPolicy, locationAllowlist: allowIn, searchArea, intent, ...budgetPatch } = patch;
-  const locationAllowlist = allowIn
-    ? allowIn.map((a) => a.trim()).filter((a) => a.length >= 2 && a.length <= 48)
-    : matrix.locationAllowlist;
+  const {
+    unknownPolicy,
+    locationAllowlist: allowIn,
+    searchArea,
+    searchZip,
+    searchPoint,
+    intent,
+    ...budgetPatch
+  } = patch;
+  const nextArea = searchArea != null ? searchArea.trim() : matrix.searchArea;
+  const areaChanged = searchArea != null && !samePlace(nextArea, matrix.searchArea || "");
+  const locationAllowlist =
+    allowIn !== undefined
+      ? allowIn.map((a) => a.trim()).filter((a) => a.length >= 2 && a.length <= 48)
+      : areaChanged
+        ? []
+        : matrix.locationAllowlist;
   const next: UserMatrix = {
     ...matrix,
     unknownPolicy: unknownPolicy ?? matrix.unknownPolicy,
-    searchArea: searchArea != null ? searchArea.trim() : matrix.searchArea,
+    searchArea: nextArea,
+    searchZip:
+      searchZip !== undefined
+        ? String(searchZip).replace(/\D/g, "").slice(0, 5)
+        : areaChanged
+          ? ""
+          : matrix.searchZip || "",
+    searchPoint:
+      searchPoint !== undefined ? String(searchPoint).trim().slice(0, 80) : areaChanged ? "" : matrix.searchPoint || "",
     intent: intent === "rent" || intent === "buy" ? intent : matrix.intent,
     budget: { ...matrix.budget, ...budgetPatch },
     locationAllowlist,
@@ -83,7 +112,7 @@ export function setBudget(
   if (!next.searchArea && next.locationAllowlist.length) {
     next.searchArea = next.locationAllowlist.join(", ");
   }
-  if (next.searchArea || next.locationAllowlist.length) {
+  if (next.searchArea || next.locationAllowlist.length || next.searchZip || next.searchPoint) {
     const loc = setDimension(next, "school_area", { enabled: true, mustHave: false });
     if (!("error" in loc)) return loc;
   }
@@ -104,6 +133,8 @@ export function previewMatrix(matrix: UserMatrix) {
     catalogVersion: matrix.catalogVersion,
     unknownPolicy: matrix.unknownPolicy,
     searchArea: matrix.searchArea,
+    searchZip: matrix.searchZip,
+    searchPoint: matrix.searchPoint,
     intent: matrix.intent,
     baseline: baselineStatus(matrix),
     budget: matrix.budget,
@@ -154,11 +185,13 @@ export const CHAT_TOOLS = [
     type: "function" as const,
     function: {
       name: "set_budget",
-      description: "Set search area, buy vs rent, neighborhood allowlist, and money caps. Default is buy (for-sale listings). Named cities go in locationAllowlist and become the live-search center (St. Petersburg + Clearwater, not Tampa). Use searchArea for the primary city/metro only when they asked for that place.",
+      description: "Set search area, ZIP, school/address point, buy vs rent, neighborhood allowlist, and money caps. Default is buy (for-sale listings). Named cities go in locationAllowlist. A ZIP sets searchZip for a zip-code pull. A school or landmark goes in searchPoint and becomes the radius center — do not put the school name in locationAllowlist. Changing searchArea replaces the previous ZIP, point, and neighborhoods unless you pass the new values in the same call.",
       parameters: {
         type: "object",
         properties: {
-          searchArea: { type: "string", description: "Metro / general area, e.g. Tampa, FL" },
+          searchArea: { type: "string", description: "Metro / general area, e.g. Tampa, FL or Town N Country, FL" },
+          searchZip: { type: "string", description: "5-digit ZIP to search. Replaces the previous ZIP. Empty string clears it." },
+          searchPoint: { type: "string", description: "School or landmark used as the live-search radius center, e.g. Berkeley Prep. Empty string clears it." },
           intent: { type: "string", enum: ["buy", "rent"], description: "buy = for-sale listings (default). rent = long-term rentals. Switching needs a new live pull." },
           maxPrice: { type: "number" },
           maxPitia: { type: "number" },
@@ -266,6 +299,8 @@ export function applyTool(
         args as UserMatrix["budget"] & {
           locationAllowlist?: string[];
           searchArea?: string;
+          searchZip?: string;
+          searchPoint?: string;
           unknownPolicy?: UnknownPolicy;
           intent?: ListingIntent;
         }
@@ -275,6 +310,8 @@ export function applyTool(
         result: {
           ok: true,
           searchArea: next.searchArea,
+          searchZip: next.searchZip,
+          searchPoint: next.searchPoint,
           intent: next.intent,
           locationAllowlist: next.locationAllowlist,
           budget: next.budget,

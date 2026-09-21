@@ -25,6 +25,12 @@ export function MatrixPreview({ matrix }: { matrix: UserMatrix }) {
             </li>
           ))}
         </ul>
+        {matrix.searchPoint ? (
+          <p className="mt-2 text-xs text-[var(--muted)]">Centered on {matrix.searchPoint}</p>
+        ) : null}
+        {matrix.searchZip ? (
+          <p className="mt-2 text-xs text-[var(--muted)]">ZIP {matrix.searchZip}</p>
+        ) : null}
         {neighborhoods.length ? (
           <p className="mt-2 text-xs text-[var(--muted)]">Neighborhoods: {neighborhoods.join(" · ")}</p>
         ) : matrix.searchArea ? (

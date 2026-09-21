@@ -274,6 +274,7 @@ export function filterListingsByQuery(listings: PropertyListing[], query: Search
     if (query.minBaths && (l.baths ?? 0) < query.minBaths) return false;
     if (query.minSqft && (l.sqft ?? 0) < query.minSqft) return false;
     if (query.maxPrice && (l.listPrice ?? 0) > query.maxPrice) return false;
+    if (query.zip && !query.radius && l.zip && l.zip !== query.zip) return false;
     if ((query.market ?? "sale") !== listingMarket(l)) return false;
     return true;
   });
@@ -349,10 +350,13 @@ export function liveWorkarounds(cached: SearchQuery, next: SearchQuery): string[
   if (cached.maxPrice != null && (next.maxPrice == null || next.maxPrice > cached.maxPrice)) {
     tips.push(`Keep max price at $${cached.maxPrice.toLocaleString()} or less`);
   }
-  const cachedPlace = cached.address || cached.city || "";
-  const nextPlace = next.address || next.city || "";
+  const cachedPlace = cached.address || cached.city || cached.zip || "";
+  const nextPlace = next.address || next.city || next.zip || "";
   if (cachedPlace && nextPlace && cachedPlace !== nextPlace) {
     tips.push(`Stay in ${cachedPlace} instead of switching to ${nextPlace}`);
+  }
+  if ((cached.zip ?? "") !== (next.zip ?? "") && cached.zip) {
+    tips.push(`Stay in ZIP ${cached.zip} instead of switching ZIP`);
   }
   if ((cached.propertyType ?? "") !== (next.propertyType ?? "")) {
     tips.push(`Stay on ${cached.propertyType || "the current property type"}`);

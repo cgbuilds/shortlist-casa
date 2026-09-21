@@ -374,6 +374,8 @@ export function defaultMatrix(): UserMatrix {
     catalogVersion: CATALOG_VERSION,
     unknownPolicy: "skip",
     searchArea: "",
+    searchZip: "",
+    searchPoint: "",
     intent: "buy",
     budget: {
       downPaymentPct: 5,
@@ -461,8 +463,20 @@ export function baselineStatus(matrix: UserMatrix): { complete: boolean; gaps: B
     {
       id: "area",
       label: "General area",
-      value: matrix.searchArea || matrix.locationAllowlist.join(", ") || "not set",
-      done: Boolean(matrix.searchArea) || matrix.locationAllowlist.length > 0,
+      value:
+        [
+          matrix.searchArea,
+          matrix.searchZip ? `ZIP ${matrix.searchZip}` : "",
+          matrix.searchPoint ? `near ${matrix.searchPoint}` : "",
+          matrix.locationAllowlist.join(", "),
+        ]
+          .filter(Boolean)
+          .join(" · ") || "not set",
+      done:
+        Boolean(matrix.searchArea) ||
+        Boolean(matrix.searchZip) ||
+        Boolean(matrix.searchPoint) ||
+        matrix.locationAllowlist.length > 0,
     },
     {
       id: "beds",
